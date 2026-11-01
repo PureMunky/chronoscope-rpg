@@ -43,6 +43,13 @@ b { color: #fff; }
 .bar.xp > div { background: linear-gradient(90deg, #6a8aff, #9fd0ff); }
 #h-hpt { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 14px; font-weight: 700; text-shadow: 0 1px 2px #000; }
 .items { display: flex; gap: 14px; margin-top: 7px; font-size: 13px; }
+.gearline { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.sus { margin-top: 6px; font-size: 11px; color: #ffd08a; }
+.sus .bar.sb { height: 5px; margin-top: 3px; }
+.sus .bar.sb > div { background: #ffd08a; }
+.sus.warn { color: #ffb070; } .sus.warn .bar.sb > div { background: #ffb070; }
+.sus.hunt { color: var(--red); } .sus.hunt .bar.sb > div { background: var(--red); }
+.bad { color: var(--red); }
 .hud-top { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); text-align: center; padding: 6px 16px; min-width: 280px; }
 .when { font-weight: 700; font-size: 16px; color: var(--gold); }
 .where { font-size: 12px; }
@@ -73,7 +80,7 @@ b { color: #fff; }
 .btnkey.locked { opacity: 0.35; }
 
 /* toasts */
-#toasts { position: fixed; top: 130px; left: 14px; width: min(400px, calc(100vw - 290px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 5; }
+#toasts { position: fixed; top: 200px; left: 14px; width: min(400px, calc(100vw - 290px)); display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 5; }
 .toast { background: rgba(14, 18, 30, 0.9); border: 1px solid rgba(201, 162, 74, 0.4); border-radius: 8px; padding: 8px 12px; font-size: 13px; animation: tin 0.25s ease-out; transition: opacity 0.5s; }
 .toast.out { opacity: 0; }
 .toast .ev { color: var(--gold); font-weight: 700; }
@@ -96,6 +103,11 @@ b { color: #fff; }
 .dlg .lore .t, .log .t, .deeds .t { color: var(--gold); font-weight: 700; margin-right: 4px; }
 .deedbox { background: rgba(125, 240, 255, 0.07); border: 1px solid rgba(125, 240, 255, 0.25); border-radius: 8px; padding: 8px 12px; margin: 0 0 10px; font-size: 13px; }
 .deedbox .dh { color: var(--cyan); font-weight: 700; font-size: 12px; }
+.deedbox.dark { background: rgba(255, 90, 90, 0.08); border-color: rgba(255, 90, 90, 0.35); }
+.deedbox.dark .dh { color: #ff9a9a; }
+.thread.echo.fated { color: #bff3ff; background: rgba(125, 240, 255, 0.08); border-color: rgba(125, 240, 255, 0.3); }
+.thread.echo { color: #ffe8b8; background: rgba(255, 210, 60, 0.06); border-color: rgba(255, 210, 60, 0.25); }
+.thread .kk { display: inline-block; font-size: 10px; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; margin-right: 4px; }
 .deedbox ul { margin: 4px 0 0; padding-left: 18px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
@@ -158,3 +170,19 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
   .key { min-width: 54px; }
   .help-grid { grid-template-columns: 1fr; }
 }
+
+/* inventory screen */
+.sheet.inv { width: min(760px, calc(100vw - 32px)); }
+.inv-top { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 13px; padding: 8px 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; }
+.inv-h { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.inv-row { display: grid; grid-template-columns: 70px 1fr auto; grid-template-rows: auto auto; gap: 0 10px; padding: 6px 10px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; font-size: 13px; }
+.inv-row:hover { background: rgba(255, 255, 255, 0.04); }
+.inv-row.sel { background: rgba(255, 210, 60, 0.1); border-color: rgba(255, 210, 60, 0.45); }
+.inv-row .slot { color: var(--muted); font-size: 11px; text-transform: uppercase; grid-row: span 2; align-self: center; }
+.inv-row .nm { font-weight: 700; }
+.inv-row .age { color: var(--gold); font-size: 11px; text-align: right; }
+.inv-row .st { grid-column: 2 / 4; color: var(--muted); font-size: 12px; }
+.inv-help { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+.inv-empty { margin: 6px 10px; font-size: 12px; }
+.gearline.bad { color: var(--red); } .gearline.warnc { color: #ffd08a; }
+.dlg .warn { color: #ffd08a; }

@@ -16,6 +16,9 @@
       <div class="bar hp"><div id="h-hp"></div><span id="h-hpt"></span></div>
       <div class="bar xp"><div id="h-xp"></div></div>
       <div class="items" id="h-items"></div>
+      <div class="gearline" id="h-gear"></div>
+      <div class="gearline" id="h-dress"></div>
+      <div id="h-sus" class="sus" hidden></div>
     </div>
     <div class="hud-top panel-glass">
       <div class="when"><span id="h-year"></span> · <span id="h-month"></span></div>
@@ -29,11 +32,13 @@
     </div>
     <div class="hotbar panel-glass">
       <div class="key"><b>J</b>Sword</div>
-      <div class="key"><b>K</b>Bow <i id="k-arrows"></i></div>
+      <div class="key"><b>K</b><span id="k-ranged">Bow</span> <i id="k-arrows"></i></div>
       <div class="key"><b>Space</b>Roll</div>
       <div class="key"><b>Q</b>Potion <i id="k-potion"></i></div>
       <div class="key"><b>E</b>Talk</div>
       <div class="key"><b>R</b>Rest</div>
+      <div class="key"><b>I</b>Gear</div>
+      <div class="key"><b>U</b>Conceal</div>
       <button class="key btnkey" id="k-scope"><b>T</b>Chronoscope</button>
       <button class="key btnkey" id="k-journal"><b>L</b>Journal</button>
       <button class="key btnkey" id="k-help"><b>H</b>Help</button>
@@ -74,6 +79,11 @@
     <div id="journal-body"></div>
   </section>
 
+  <section id="inv" class="sheet panel-solid inv" hidden aria-label="Inventory">
+    <header><h2>Inventory</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
+    <div id="inv-body"></div>
+  </section>
+
   <section id="help" class="sheet panel-solid" hidden aria-label="Help">
     <header><h2>How to play</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
     <div class="help-grid">
@@ -90,6 +100,8 @@
           <tr><td>R</td><td>Rest a season in a village: heal, restock arrows</td></tr>
           <tr><td>T</td><td>The Chronoscope: see the future, travel in time</td></tr>
           <tr><td>L</td><td>Journal</td></tr>
+          <tr><td>I</td><td>Inventory: ↑↓ choose, Enter wield / wear / stow, X drop</td></tr>
+          <tr><td>U</td><td>Conceal everything out of its time here; U again to take it out</td></tr>
           <tr><td>In dialogs</td><td>1–9 choose · Enter/E accept · Esc decline</td></tr>
           <tr><td>In the Chronoscope</td><td>, . or ←→ year (Shift ×10) · PgUp/PgDn ±50 · [ ] jump between threads of fate · Home: now · Enter: travel</td></tr>
         </table>
@@ -108,6 +120,10 @@
           <li><b>Granaries</b> → discord in a rival capital</li>
           <li><b>Regicide</b> → a rival realm's succession crisis</li>
         </ul>
+        <h3>Gear from other ages</h3>
+        <p>Weapons, armour and ammunition belong to an age, from Stone Age clubs to Industrial rifles. Smiths sell what their people can make, and elite foes drop theirs. Gear from later ages is stronger, but people notice: wield things two or more ages ahead of them (or fire a gun where guns are unknown) and <b>suspicion</b> rises. They whisper, refuse you quests and beds, and at the worst send witch-hunters. <b>Clothes</b> matter too: dress like another people and prices rise; dress two ages off and people walk away from you, refuse to talk, and pay you less (no one attacks you for it). Smiths' markets sell local clothes. Press <b>U</b> to hide everything out of its time: you blend in, but fight with bare fists, without a ranged weapon or armour, until you press U again. Ammunition only comes from an age that can make it. Sell a far-future item to a smith and their people take it apart and learn from it (a deed in history).</p>
+        <h3>Echoes</h3>
+        <p>The Chronoscope lists turning points of your timeline (a plague, a capital sacked, a rival's founding). Take one up with its number and travel to its years to stand in it.</p>
         <h3>Time</h3>
         <p>Walking a province takes about a month; resting takes a season. You age only while living, not while travelling in time. When a bearer dies, the Chronoscope passes to someone young, and every deed still stands.</p>
       </div>
@@ -145,6 +161,7 @@
   <script src="js/engine/oracle.js"></script>
   <script src="js/rpg/local.js"></script>
   <script src="js/rpg/quests.js"></script>
+  <script src="js/rpg/gear.js"></script>
   <script src="js/rpg/game.js"></script>
 </body>
 </html>

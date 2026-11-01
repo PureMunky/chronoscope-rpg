@@ -14,7 +14,9 @@
   var W = Sim.W, H = Sim.H, N = Sim.N, P = L.P, TS = L.TS, C = L.C, NB = Sim.NB, TER = Sim.TER;
   var START = Story.START_YEAR, HORIZON = 2000, TILES_PER_MONTH = 12;
   var MONTHS = ['Deepwinter', 'Thaw', 'Seedtime', 'Bloom', 'Greening', 'Midsummer', 'Highsun', 'Harvest', 'Reaping', 'Leaffall', 'Frost', 'Longnight'];
-  var DEED_NAMES = { irrigate: 'Irrigation', rally: 'Rally', heal: 'Tending the sick', settle: 'Settlement', learn: 'Learning', teach: 'Teaching', discord: 'Discord', assassinate: 'Assassination' };
+  var DEED_NAMES = { irrigate: 'Irrigation', rally: 'Rally', heal: 'Tending the sick', settle: 'Settlement', learn: 'Learning', teach: 'Teaching', discord: 'Discord', assassinate: 'Assassination',
+    prophet: 'A prophet\'s word', bless: 'The land heals', blight: 'Salted earth', tribe: 'A new people', knowledge: 'Lost knowledge', plague: 'Plague' };
+  var Gear = window.Gear;
 
   // ---------------------------------------------------------------------------
   // Utilities
@@ -85,14 +87,21 @@
       knowledge: null, lives: lives || 1, distAcc: 0, moving: false, walkT: 0, boat: false, dead: false, calm: 0, bowT: 0
     };
     p.hp = maxHp(p);
+    p.suspicion = 0;
     return p;
+  }
+  /** A new bearer starts with the gear of the people they were born among. */
+  function equipNative(p, pi) {
+    var la = Gear.localAge(pi);
+    var c = G.s.owner[pi];
+    Gear.starter(p, la >= 0 ? la : 2, c >= 0 ? G.s.cSig[c] : (G.home ? G.home.sig : 0));
   }
   function maxHp(p) {
     var f = p.age > 50 ? Math.max(0.55, 1 - (p.age - 50) * 0.012) : 1;
     return Math.round((100 + 15 * (p.level - 1)) * f);
   }
-  function swordDmg() { return Math.round(15 + BAL.swordPer * (G.player.level - 1)); }
-  function bowDmg() { return Math.round(11 + BAL.bowPer * (G.player.level - 1)); }
+  function swordDmg() { return Math.round((15 + BAL.swordPer * (G.player.level - 1)) * G.player.eq.melee.mult); }
+  function bowDmg() { return Math.round((11 + BAL.bowPer * (G.player.level - 1)) * G.player.eq.ranged.mult); }
   function xpNext(l) { return 40 + 50 * l; }
 
   function gainXp(n) {
@@ -111,7 +120,9 @@
     var p = G.player;
     gainXp(xp);
     if (potions) p.potions = Math.min(6, p.potions + potions);
-    toast('+' + xp + ' XP' + (potions ? ', +' + potions + ' potion' : ''));
+    var dr = Gear.dressInfo(provOf(p.x, p.y)), silver = Math.round(xp * 0.4 * dr.pay);
+    p.silver += silver;
+    toast('+' + xp + ' XP, +' + silver + ' silver' + (potions ? ', +' + potions + ' potion' : '') + (dr.pay < 1 ? ' <span class="muted">(less than they would pay one of their own: you look ' + dr.label + ')</span>' : ''));
   }
 
   // ---------------------------------------------------------------------------
@@ -190,10 +201,15 @@
       return true;
     }
     var block = Sim.deedBlocker(s, type, x, y, v ? { tech: v } : null);
+    if (!block && type === 'tribe' && !Sim.isLand(s.terrain[pi])) block = 'There is no land here.';
+    if (!block && type === 'plague' && s.pop[pi] <= 0) block = 'No one lives here any more.';
+    if (!block && type === 'knowledge' && s.owner[pi] < 0) block = 'No people here to learn it.';
     if (block) { toast('<b>' + DEED_NAMES[type] + '</b> came to nothing: ' + esc(block), 7000); return false; }
     var before = measure(type, pi), prev = readFate(G.cur), old = G.cur;
     G.cur = G.world.intervene(G.cur, G.year, { type: type, x: x, y: y, v: v || 0, note: why || '' });
     if (G.cur !== old) G.cur.name = lifeBranchName();
+    var iv = G.cur.interventions[G.cur.interventions.length - 1];
+    if (type === 'bless' || type === 'blight') L.clearCaches();
     seekYear(G.year);
     refreshActive();
     var after = measure(type, pi), msg = '';
@@ -206,8 +222,13 @@
       case 'teach': msg = 'The knowledge of the ' + rn + ': ' + before.tech + ' → ' + after.tech + ' (' + Sim.AGES[Sim.ageOf(after.tech)].name + ').'; break;
       case 'assassinate': msg = 'The ' + rn + ' fall into a succession crisis: solidarity ' + (before.realm / 100).toFixed(1) + '% → ' + (after.realm / 100).toFixed(1) + '%.'; break;
       case 'settle': msg = after.sig ? 'The land is settled by the ' + esc(civName(after.sig)) + '.' : 'The settlers take root.'; break;
+      case 'prophet': msg = 'Solidarity here ' + pct(before.local) + ' → ' + pct(after.local) + (before.c >= 0 ? '; across all of the ' + rn + ': ' + (before.realm / 100).toFixed(1) + '% → ' + (after.realm / 100).toFixed(1) + '%' : '') + '.'; break;
+      case 'bless': case 'blight': msg = 'Soil fertility here ' + pct(before.soil) + ' → ' + pct(after.soil) + '.'; break;
+      case 'tribe': msg = after.sig ? 'A new people is born: the <b>' + esc(civName(after.sig)) + '</b>.' : 'A new people is born.'; break;
+      case 'knowledge': msg = 'The knowledge of the ' + rn + ': ' + before.tech + ' → ' + after.tech + ' (' + Sim.AGES[Sim.ageOf(after.tech)].name + ').'; break;
+      case 'plague': msg = 'Plague breaks out among the ' + rn + '.'; break;
     }
-    G.deeds.push({ year: G.year, type: type, pi: pi, why: why || '', msg: msg });
+    G.deeds.push({ year: G.year, type: type, pi: pi, why: why || '', msg: msg, who: p.name, iv: iv, sig: before.sig, newSig: after.sig });
     toast('<b>History changes. ' + DEED_NAMES[type] + '</b> in ' + G.year + ': ' + msg, 8000);
     journal('<b>' + DEED_NAMES[type] + '</b> at (' + x + ', ' + y + ') in ' + G.year + '. ' + msg);
     G.fateWatch = { prev: prev };
@@ -287,9 +308,27 @@
     captain: { name: 'Captain', hp: 95, dmg: 15, speed: 2.8, r: 0.4, xp: 40, reach: 1.25, wind: 0.45, aggro: 9, scale: 1, uniform: 1 },
     guard: { name: 'Royal guard', hp: 60, dmg: 13, speed: 2.8, r: 0.32, xp: 18, reach: 1.2, wind: 0.38, aggro: 9, scale: 1, uniform: 1 },
     ruler: { name: 'Ruler', hp: 320, dmg: 24, speed: 2.7, r: 0.5, xp: 150, reach: 1.4, wind: 0.55, aggro: 11, scale: 1, uniform: 1, boss: 1 },
-    granary: { name: 'Granary', hp: 45, r: 0.5, xp: 5, obj: 1 }
+    shield: { name: 'Shieldbearer', hp: 40, dmg: 9, speed: 2.5, r: 0.33, xp: 20, reach: 1.1, wind: 0.42, aggro: 8, scale: 1, uniform: 1, shield: 1 },
+    rebel: { name: 'Rebel', hp: 30, dmg: 8, speed: 3.0, r: 0.3, xp: 12, reach: 1.0, wind: 0.34, aggro: 8, scale: 1 },
+    hunter: { name: 'Witch-hunter', hp: 40, dmg: 10, speed: 3.2, r: 0.3, xp: 14, reach: 1.15, wind: 0.36, aggro: 12, scale: 1, uniform: 1 },
+    warden: { name: 'Tomb warden', hp: 55, dmg: 12, speed: 2.6, r: 0.34, xp: 22, reach: 1.2, wind: 0.42, aggro: 7, scale: 1 },
+    greatbeast: { name: 'Great beast', hp: 260, dmg: 20, speed: 3.3, r: 0.6, xp: 120, reach: 1.45, wind: 0.5, aggro: 9, beast: 1, boss: 1 },
+    granary: { name: 'Granary', hp: 45, r: 0.5, xp: 5, obj: 1 },
+    storehouse: { name: 'Storehouse', hp: 50, r: 0.5, xp: 5, obj: 1 },
+    well: { name: 'Well', hp: 40, r: 0.45, xp: 5, obj: 1 }
   };
-  var NPC_ROLES = { villager: 1, elder: 1, royal: 1, spymaster: 1, scholar: 1, stranger: 1, settler: 1, lord: 1, sentry: 1 };
+  var NPC_ROLES = { villager: 1, elder: 1, royal: 1, spymaster: 1, scholar: 1, stranger: 1, settler: 1, lord: 1, sentry: 1, smith: 1, prophet: 1, exile: 1, stele: 1 };
+  var EPITHETS = [['the Cruel', 'brutal'], ['the Swift', 'swift'], ['the Unbroken', 'stalwart'], ['Ironhide', 'stalwart'], ['the Butcher', 'brutal'], ['Quickblade', 'swift']];
+  /** A named elite: tougher, with a trait, and it drops the gear of its age. */
+  function makeElite(a) {
+    var e = EPITHETS[(Math.random() * EPITHETS.length) | 0];
+    a.elite = e[1];
+    a.name = Story.personName(a.faction || G.world.seed, a.id) + ' ' + e[0];
+    a.maxHp = a.hp = Math.round(a.maxHp * (e[1] === 'stalwart' ? 2.2 : 1.7));
+    if (e[1] === 'brutal') a.dmg = Math.round(a.dmg * 1.4);
+    if (e[1] === 'swift') { a.speed *= 1.35; a.wind *= 0.8; }
+    a.xp = Math.round(a.xp * 2.5);
+  }
 
   function spawnAt(kind, x, y, o) {
     o = o || {};
@@ -297,10 +336,11 @@
     for (var k in o) a[k] = o[k];
     if (a.prov == null) a.prov = provOf(x, y);
     if (NPC_ROLES[kind]) {
-      a.npc = true; a.role = kind; a.r = 0.3; a.speed = kind === 'villager' || kind === 'settler' ? 1.2 : 0.5;
+      a.npc = true; a.role = kind; a.r = kind === 'stele' ? 0.4 : 0.3; a.speed = kind === 'villager' || kind === 'settler' ? 1.2 : kind === 'stele' ? 0 : 0.5;
       a.hostile = false;
+      if (a.follow) { a.maxHp = a.hp = kind === 'prophet' ? 140 : 70; a.speed = 4.2; }
       if (!a.name) a.name = kind === 'villager' ? 'Villager' : kind;
-    } else if (kind === 'tent' || kind === 'fire') {
+    } else if (kind === 'tent' || kind === 'fire' || kind === 'ruins') {
       a.deco = true; a.r = 0.4;
     } else {
       var K = KINDS[kind], age = 0;
@@ -309,13 +349,16 @@
         age = fc >= 0 ? Sim.ageOf(G.s.cTech[fc]) : 1;
         if (o.age != null) age = o.age;
       }
-      a.name = kind === 'ruler' && a.faction ? rulerName(a.faction) : K.name;
+      a.name = kind === 'ruler' && a.faction ? rulerName(a.faction) : kind === 'greatbeast' && a.beastName ? a.beastName : K.name;
+      a.age = age;
       a.maxHp = a.hp = Math.round(K.hp * (1 + BAL.hpAge * age));
       a.dmg = Math.round((K.dmg || 0) * (1 + BAL.dmgAge * age));
       a.speed = K.speed || 0; a.r = K.r; a.xp = Math.round(K.xp * (1 + 0.1 * age)); a.reach = K.reach || 1; a.wind = K.wind || 0.3;
-      a.aggro = K.aggro || 8; a.ranged = !!K.ranged; a.boss = !!K.boss; a.obj = !!K.obj; a.beast = !!K.beast; a.uniform = !!K.uniform;
+      a.aggro = K.aggro || 8; a.ranged = !!K.ranged; a.boss = !!K.boss; a.obj = !!K.obj; a.beast = !!K.beast; a.uniform = !!K.uniform; a.shield = !!K.shield;
       if (a.hostile == null) a.hostile = true;
       if (a.obj) a.hostile = false;
+      if (kind === 'greatbeast') a.look = Sim.hash4(a.prov, 1, 2, 3) % 2 ? 'bear' : 'wolf';
+      if (!a.obj && !a.boss && !a.beast && !o.noElite && Math.random() < (o.qid ? 0.12 : 0.08) && !G.simMode) makeElite(a);
     }
     G.actors.push(a);
     return a;
@@ -407,7 +450,7 @@
             spawnNear('spymaster', bx + C - 1.5, by + C - 1.5, { prov: pi, faction: sig, key: 'spymaster:' + sig, name: 'Spymaster ' + Story.personName(sig, 501) });
             spawnNear('scholar', bx + C - 1.5, by + C + 2.5, { prov: pi, faction: sig, key: 'scholar:' + sig, name: 'Scholar ' + Story.personName(sig, 502) });
           }
-        } else if (!hasQuestAt(pi, 'regicide')) {
+        } else if (!hasQuestAt(pi, 'regicide') && !hasQuestAt(pi, 'cradle')) {
           spawnNear('lord', bx + C + 1.5, by + C - 0.5, { prov: pi, faction: sig, name: rulerName(sig) });
           spawnNear('sentry', bx + C - 0.5, by + C - 0.5, { prov: pi, faction: sig, name: 'Sentry of the ' + civName(sig) });
           spawnNear('sentry', bx + C + 3.5, by + C - 0.5, { prov: pi, faction: sig, name: 'Sentry of the ' + civName(sig) });
@@ -415,7 +458,15 @@
       } else if (pop >= 15 && Sim.hash4(G.world.seed, pi, 0, 951) % 3 === 0) {
         spawnNear('elder', bx + C + 2.5, by + C + 1.5, { prov: pi, faction: sig, key: 'elder:' + pi, name: 'Elder ' + Story.personName(sig, pi) });
       }
+      if (cap || (pop >= 900 && Sim.hash4(G.world.seed, pi, 1, 952) % 5 === 0)) {
+        spawnNear('smith', bx + C - 2.5, by + C + 1.5, { prov: pi, faction: sig, name: 'Smith ' + Story.personName(sig, pi + 3) });
+      }
     }
+    // the marks your deeds left on this place
+    deedsHere(pi).forEach(function (d, k) {
+      if (k > 1) return;
+      spawnNear('stele', bx + C + (k ? -3.5 : 3.5), by + C + 3.5, { prov: pi, deed: d, name: 'A stone marker' });
+    });
     if (!(G.cleared[pi] >= G.year)) {
       var t = s.terrain[pi];
       if (c < 0 && pop === 0) {
@@ -433,8 +484,15 @@
     if (withQuests) Quests.spawnFor(pi);
   }
 
+  /** Deeds of yours that still stand in this timeline, done here by this year. */
+  function deedsHere(pi) {
+    return G.deeds.filter(function (d) { return d.pi === pi && d.year <= G.year && G.cur.interventions.indexOf(d.iv) >= 0; });
+  }
+  function deedsNear(pi, r) {
+    return G.deeds.filter(function (d) { return md(d.pi, pi) <= r && d.year < G.year && G.cur.interventions.indexOf(d.iv) >= 0; });
+  }
   function despawnProv(pi, keepQuest) {
-    G.actors = G.actors.filter(function (a) { return a.prov !== pi || (keepQuest && a.qid) || a.role === 'stranger'; });
+    G.actors = G.actors.filter(function (a) { return a.prov !== pi || (keepQuest && a.qid) || a.role === 'stranger' || a.follow; });
     G.pickups = G.pickups.filter(function (pk) { return pk.prov !== pi || (keepQuest && pk.qid); });
     if (!keepQuest) Quests.despawned(pi);
   }
@@ -552,8 +610,8 @@
     return clearLine(ax, ay, bx, by, false) && clearLine(ax + nx, ay + ny, bx + nx, by + ny, false) && clearLine(ax - nx, ay - ny, bx - nx, by - ny, false);
   }
   /** Move toward the player: straight when the way is clear, else along the flow field. */
-  function pursue(a, speed, dt) {
-    var p = G.player;
+  function pursue(a, speed, dt, target) {
+    var p = target || G.player;
     if (clearWalk(a.x, a.y, p.x, p.y, a.r)) return steer(a, p.x, p.y, speed, dt);
     var t = flowNext(a.x, a.y);
     return t ? steer(a, t.x, t.y, speed, dt) : steer(a, p.x, p.y, speed, dt);
@@ -568,14 +626,21 @@
   function hurtPlayer(dmg, src) {
     var p = G.player;
     if (p.inv > 0 || p.dead) return;
+    dmg = Math.max(1, Math.round(dmg * (1 - p.eq.armor.reduce)));
     p.hp -= dmg; p.inv = 0.45; p.hurt = 0.3; p.calm = 0; G.shake = 0.22;
     floatText(p.x, p.y, '-' + dmg, '#ff6b6b');
     if (src) { var a = Math.atan2(p.y - src.y, p.x - src.x); move(p, Math.cos(a) * 0.25, Math.sin(a) * 0.25, false); }
     if (p.hp <= 0) { p.hp = 0; playerDies(src); }
   }
 
-  function damageActor(a, dmg, kb) {
+  function damageActor(a, dmg, kb, sx, sy) {
     var p = G.player;
+    if (sx == null) { sx = p.x; sy = p.y; }
+    // a shieldbearer blocks blows from the front unless it is mid-swing
+    if (a.shield && a.state !== 'wind' && a.state !== 'recover' && angDiff(a.face, Math.atan2(sy - a.y, sx - a.x)) < 1.1) {
+      dmg *= 0.15;
+      if (G.time - (a.blockT || -9) > 0.6) { floatText(a.x, a.y - 0.2, 'Blocked', '#b8c4d4'); a.blockT = G.time; }
+    }
     dmg = Math.round(dmg);
     a.hp -= dmg; a.flash = 0.12;
     floatText(a.x, a.y, String(dmg), '#ffe08a');
@@ -602,8 +667,10 @@
     if (a.obj) addEffect({ type: 'fireburst', x: a.x, y: a.y, life: 1.6 });
     if (a.xp) gainXp(a.xp);
     if (!a.obj && !a.npc) {
-      if (Math.random() < (a.boss ? 1 : 0.1)) spawnPickup('potion', a.x + 0.3, a.y, { prov: a.prov });
+      if (Math.random() < (a.boss || a.elite ? 1 : 0.1)) spawnPickup('potion', a.x + 0.3, a.y, { prov: a.prov });
       if (a.ranged && Math.random() < 0.6) spawnPickup('arrows', a.x - 0.3, a.y, { prov: a.prov, n: 3 + (Math.random() * 4 | 0) });
+      if (!a.beast && Math.random() < 0.45) spawnPickup('coin', a.x, a.y - 0.3, { prov: a.prov, n: 2 + (Math.random() * 4 | 0) + (a.age || 0) * 2 + (a.elite ? 15 : 0) + (a.boss ? 40 : 0) });
+      if ((a.elite && Math.random() < 0.6) || (a.boss && !a.beast)) Gear.dropFor(a, a.age || 0);
     }
     if (a.boss) toast('<b>' + esc(a.name) + '</b> is dead.', 6000);
     if (a.qid) Quests.onKill(a);
@@ -661,20 +728,50 @@
   function shoot() {
     var p = G.player;
     if (p.bowCd > 0 || p.rollT > 0 || p.dead) return;
-    if (p.arrows <= 0) { if (G.time - (G.noArrowT || -9) > 2) { toast('Out of arrows. Rest in a village (R) to restock.'); G.noArrowT = G.time; } p.bowCd = 0.4; return; }
-    p.bowCd = 0.45; p.arrows--; p.bowT = 0.3;
+    var rw = p.eq.ranged;
+    if (rw.none) { if (G.time - (G.noArrowT || -9) > 2) { toast('You have nothing to shoot with. (U or I to take out a weapon.)'); G.noArrowT = G.time; } p.bowCd = 0.4; return; }
+    var am = Gear.AMMO[rw.ammo];
+    if (Gear.ammoOf(p) <= 0) {
+      if (G.time - (G.noArrowT || -9) > 2) { toast('Out of ' + am.label + '. ' + (am.age > 4 ? 'Only a people of the ' + Gear.AGE_NAMES[am.age] + ' can make more.' : 'Rest in a village (R) or visit a smith.')); G.noArrowT = G.time; }
+      p.bowCd = 0.4; return;
+    }
+    p.bowCd = rw.cd; Gear.useAmmo(p); p.bowT = 0.3;
     var bt = bowTarget();
     if (bt) p.face = Math.atan2(bt.y - p.y, bt.x - p.x);
-    var sp = 15;
-    G.projectiles.push({ x: p.x + Math.cos(p.face) * 0.4, y: p.y + Math.sin(p.face) * 0.4, vx: Math.cos(p.face) * sp, vy: Math.sin(p.face) * sp, dmg: bowDmg(), mine: true, life: 0.85 });
+    var sp = rw.speed;
+    G.projectiles.push({ x: p.x + Math.cos(p.face) * 0.4, y: p.y + Math.sin(p.face) * 0.4, vx: Math.cos(p.face) * sp, vy: Math.sin(p.face) * sp, dmg: bowDmg(), mine: true, life: 12.5 / sp, bullet: !!rw.gun, stone: rw.w === 'sling' });
+    if (rw.gun) { addEffect({ type: 'muzzle', x: p.x + Math.cos(p.face) * 0.7, y: p.y + Math.sin(p.face) * 0.7, life: 0.12 }); G.shake = 0.12; Gear.onShot(); }
   }
   function enemyShoot(a) {
-    var p = G.player, d = Math.hypot(p.x - a.x, p.y - a.y), sp = 9;
+    var p = foeTarget(a), d = Math.hypot(p.x - a.x, p.y - a.y), sp = 9;
     var lead = d / sp * 0.5, tx = p.x + (p.lastVx || 0) * lead, ty = p.y + (p.lastVy || 0) * lead;
     var ang = Math.atan2(ty - a.y, tx - a.x) + rnd(-0.08, 0.08);
     a.face = ang;
     G.projectiles.push({ x: a.x + Math.cos(ang) * 0.4, y: a.y + Math.sin(ang) * 0.4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: a.dmg, mine: false, life: 1.4, src: a });
   }
+  /** Who an enemy goes for: you, or someone you are escorting if they are closer. */
+  function foeTarget(a) {
+    var p = G.player, best = p, bd = p.dead ? 1e9 : Math.hypot(p.x - a.x, p.y - a.y);
+    for (var k = 0; k < G.actors.length; k++) {
+      var f = G.actors[k];
+      if (!f.follow) continue;
+      var d = Math.hypot(f.x - a.x, f.y - a.y);
+      if (d < bd - 0.8) { bd = d; best = f; }
+    }
+    return best;
+  }
+  function hurtFollower(f, dmg) {
+    if (f.inv > 0) return;
+    f.hp -= dmg; f.flash = 0.15; f.inv = 0.4;
+    floatText(f.x, f.y, '-' + dmg, '#ff9a9a');
+    if (f.hp <= 0) {
+      var i = G.actors.indexOf(f);
+      if (i >= 0) G.actors.splice(i, 1);
+      addEffect({ type: 'puff', x: f.x, y: f.y, life: 0.6, color: '#ddd' });
+      Quests.onFollowerDeath(f);
+    }
+  }
+  function hurt(target, dmg, src) { if (target === G.player) hurtPlayer(dmg, src); else hurtFollower(target, dmg); }
   function roll() {
     var p = G.player;
     if (p.rollCd > 0 || p.dead) return;
@@ -724,6 +821,7 @@
     var c = s.owner[best], sig = c >= 0 ? s.cSig[c] : G.home.sig;
     var name = Story.personName(sig, G.world.seed + old.lives * 7919);
     var p = newPlayer(name, old.level, old.lives + 1);
+    equipNative(p, best);
     var f = findFree(best, C + 1, C + 1) || { x: old.x, y: old.y };
     p.x = f.x; p.y = f.y;
     G.player = p;
@@ -754,7 +852,8 @@
     updatePickups(dt);
     for (k = G.effects.length - 1; k >= 0; k--) { var e = G.effects[k]; e.t += dt; if (e.t >= e.life) G.effects.splice(k, 1); }
     G.activeT -= dt;
-    if (G.activeT <= 0) { if (!G.noSpawn) manageActive(); G.activeT = 0.25; }
+    if (G.activeT <= 0) { if (!G.noSpawn) manageActive(); Quests.tick(); G.activeT = 0.25; }
+    if (!G.simMode) Gear.update(dt);
     var ppi = provOf(p.x, p.y);
     if (ppi !== G.lastProv) { G.lastProv = ppi; Quests.enterProvince(ppi); }
     G.cam.x += (p.x - G.cam.x) * Math.min(1, dt * 8);
@@ -815,7 +914,20 @@
     }
     if (a.obj) return;
     var p = G.player, dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
+    if (a.follow) {
+      a.inv = (a.inv || 0) - dt;
+      a.prov = provOf(a.x, a.y);
+      if (d > 14) { var f = findFreeNear(p.x - Math.cos(p.face) * 1.5, p.y - Math.sin(p.face) * 1.5, 4); if (f) { a.x = f.x; a.y = f.y; } }
+      else if (d > 1.8 && pursue(a, a.speed * (d > 5 ? 1.1 : 1), dt) > 0.001) a.walkT += a.speed * dt * 3;
+      a.face = Math.atan2(dy, dx);
+      return;
+    }
     if (a.npc) {
+      if (a.fleeT > 0) {
+        a.fleeT -= dt;
+        if (steer(a, a.x - dx, a.y - dy, 1.8, dt) > 0.001) { a.face = Math.atan2(-dy, -dx); a.walkT += 1.8 * dt * 3; }
+        return;
+      }
       if (d < 2 && !p.dead) { a.face = Math.atan2(dy, dx); return; }
       a.wt -= dt;
       if (a.wt <= 0) {
@@ -827,6 +939,14 @@
     }
     var home = Math.hypot(a.x - a.hx, a.y - a.hy);
     if (p.dead && a.state !== 'idle') a.state = 'return';
+    // go for the nearest of you and anyone you are escorting
+    var tg = foeTarget(a);
+    if (tg !== p) { dx = tg.x - a.x; dy = tg.y - a.y; d = Math.hypot(dx, dy); }
+    if (a.kind === 'greatbeast' && !a.summoned && a.hp < a.maxHp * 0.5) {
+      a.summoned = true;
+      toast('<b>' + esc(a.name) + '</b> howls. The pack answers!');
+      for (var w = 0; w < 2; w++) { var cub = spawnNear('wolf', a.x + (w ? 2 : -2), a.y + 1, { prov: a.prov, hostile: true, noElite: true }); if (cub) cub.state = 'chase'; }
+    }
     switch (a.state) {
       case 'idle':
         a.wt -= dt;
@@ -848,8 +968,8 @@
         }
         a.face = Math.atan2(dy, dx);
         if (a.ranged) {
-          var sight = clearLine(a.x, a.y, p.x, p.y, true);
-          if (d > 6.5 || !sight) pursue(a, a.speed, dt);
+          var sight = clearLine(a.x, a.y, tg.x, tg.y, true);
+          if (d > 6.5 || !sight) pursue(a, a.speed, dt, tg);
           else if (d < 3.5) steer(a, a.x - dx, a.y - dy, a.speed * 0.8, dt);
           else steer(a, a.x - dy * 0.3, a.y + dx * 0.3, a.speed * 0.4, dt);
           a.walkT += a.speed * dt * 2;
@@ -857,20 +977,20 @@
         } else if (a.boss && a.cd2 <= 0 && d > 2.8 && d < 8) {
           a.state = 'chargeWind'; a.t = 0.65;
         } else if (d > a.reach * 0.8 + p.r) {
-          pursue(a, a.speed, dt);
+          pursue(a, a.speed, dt, tg);
           a.walkT += a.speed * dt * 3;
         } else if (a.cd <= 0) { a.state = 'wind'; a.t = a.wind; }
         break;
       case 'aim':
         a.face = Math.atan2(dy, dx);
         a.t -= dt;
-        if (a.t <= 0) { if (clearLine(a.x, a.y, p.x, p.y, true)) { enemyShoot(a); a.shotT = G.time; } a.state = 'chase'; a.cd = rnd(1.3, 2.1); }
+        if (a.t <= 0) { if (clearLine(a.x, a.y, tg.x, tg.y, true)) { enemyShoot(a); a.shotT = G.time; } a.state = 'chase'; a.cd = rnd(1.3, 2.1); }
         break;
       case 'wind':
         a.t -= dt;
         if (a.t <= 0) {
           addEffect({ type: 'eslash', x: a.x, y: a.y, ang: a.face, life: 0.15, r: a.reach });
-          if (d < a.reach + p.r && angDiff(a.face, Math.atan2(dy, dx)) < 1.15) hurtPlayer(a.dmg, a);
+          if (d < a.reach + p.r && angDiff(a.face, Math.atan2(dy, dx)) < 1.15) hurt(tg, a.dmg, a);
           a.state = 'recover'; a.t = a.boss ? 0.5 : BAL.recover; a.cd = rnd(BAL.cdMin, BAL.cdMax);
         }
         break;
@@ -882,7 +1002,7 @@
       case 'charge':
         a.t -= dt;
         var cm = move(a, Math.cos(a.face) * a.speed * 3.4 * dt, Math.sin(a.face) * a.speed * 3.4 * dt, true);
-        if (!a.hitCharge && d < a.r + p.r + 0.25) { a.hitCharge = true; hurtPlayer(Math.round(a.dmg * 1.3), a); }
+        if (!a.hitCharge && d < a.r + p.r + 0.25) { a.hitCharge = true; hurt(tg, Math.round(a.dmg * 1.3), a); }
         if (a.t <= 0 || cm < 0.001) { a.state = 'recover'; a.t = 0.8; a.cd2 = rnd(4, 6); }
         break;
       case 'recover':
@@ -938,11 +1058,16 @@
           for (var i = 0; i < G.actors.length; i++) {
             var a = G.actors[i];
             if ((!a.hostile && !a.obj) || Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + 0.12) continue;
-            damageActor(a, pr.dmg * rnd(0.9, 1.1), 3);
+            damageActor(a, pr.dmg * rnd(0.9, 1.1), pr.bullet ? 5 : 3, pr.x - pr.vx, pr.y - pr.vy);
             hit = true; break;
           }
         } else if (!p.dead && Math.hypot(p.x - pr.x, p.y - pr.y) < p.r + 0.12) {
           if (p.inv <= 0) { hurtPlayer(pr.dmg, pr.src); hit = true; }
+        } else {
+          for (var j = 0; j < G.actors.length; j++) {
+            var f = G.actors[j];
+            if (f.follow && Math.hypot(f.x - pr.x, f.y - pr.y) < f.r + 0.12) { hurtFollower(f, pr.dmg); hit = true; break; }
+          }
         }
       }
       if (hit || pr.life <= 0) G.projectiles.splice(k, 1);
@@ -957,7 +1082,9 @@
       pk.t += dt;
       if (Math.hypot(pk.x - p.x, pk.y - p.y) > 0.8) continue;
       if (pk.kind === 'potion') { if (p.potions >= 6) continue; p.potions++; floatText(p.x, p.y, '+1 potion', '#ff8ad8'); }
-      else if (pk.kind === 'arrows') { if (p.arrows >= 40) continue; p.arrows = Math.min(40, p.arrows + pk.n); floatText(p.x, p.y, '+' + pk.n + ' arrows', '#e8d8a8'); }
+      else if (pk.kind === 'arrows') { if ((p.ammo.arrows || 0) >= 40) continue; p.ammo.arrows = Math.min(40, (p.ammo.arrows || 0) + pk.n); floatText(p.x, p.y, '+' + pk.n + ' arrows', '#e8d8a8'); }
+      else if (pk.kind === 'coin') { p.silver += pk.n; floatText(p.x, p.y, '+' + pk.n + ' silver', '#e8e8f0'); }
+      else if (pk.kind === 'gear') { if (!Gear.pickUp(pk)) continue; }
       G.pickups.splice(k, 1);
       if (pk.qid) Quests.onPickup(pk);
     }
@@ -987,8 +1114,26 @@
     return '<p>' + bits.join(' ') + '</p>';
   }
 
+  var DEED_LEGEND = {
+    irrigate: 'dug the canals beside our grandparents', rally: 'stood with us when the raiders came, and gave us heart', heal: 'brought the moonwort when the sickness came',
+    settle: 'led the first families into this land', teach: 'taught our people the learning of far-off lands', discord: 'set fire to the royal granaries', assassinate: 'murdered a king in his own hall',
+    prophet: 'walked beside the prophet', bless: 'killed the beast that haunted the wild country, so the land could bloom', blight: 'salted the fields until nothing grew',
+    tribe: 'was there when a new people was born', knowledge: 'brought back the old knowledge', plague: 'poisoned the wells'
+  };
+  /** How people remember a deed of yours, depending on how long ago it was. */
+  function legend(d) {
+    var ago = G.year - d.year, what = DEED_LEGEND[d.type] || 'changed everything';
+    if (ago <= 3) return 'Everyone is talking about the stranger, ' + esc(d.who) + ', who ' + what + '.';
+    if (ago <= 45) return 'When I was young, a stranger called ' + esc(d.who) + ' ' + what + '. You look a little like them, you know.';
+    return 'The old songs tell of ' + esc(d.who) + ', who ' + what + ' in the year ' + d.year + '. ' + (ago > 300 ? 'Nobody knows if it really happened.' : '');
+  }
   function villagerLine(a) {
     var s = G.s, pi = a.prov, c = s.owner[pi], lines = [];
+    var sus = G.player.suspicion || 0;
+    if (sus >= Gear.SUSPECT) return pick(['What is that thing? Get it away from my children!', 'Sorcerer. I knew it the moment I saw you.', 'The priest says things like that come from the devil.'], a.id);
+    var told = deedsNear(pi, 3);
+    if (told.length && (a.id + Math.floor(G.time / 20)) % 2 === 0) return legend(told[(a.id) % told.length]);
+    if (Gear.anachronism(pi) > 0) lines.push('Where did you get that ' + esc(G.player.eq.melee.age > G.player.eq.ranged.age ? G.player.eq.melee.name.toLowerCase() : G.player.eq.ranged.name.toLowerCase()) + '? I\'ve never seen the like.');
     if (s.plague[pi]) lines.push('Stay back! My whole street is coughing.', 'They say the rats bring it. I say it\'s the gods.');
     if (s.starve[pi]) lines.push('There\'s no bread. The fields gave nothing this year.', 'My children are hungry, stranger.');
     if (c >= 0) {
@@ -1002,7 +1147,17 @@
     return lines[(a.id + Math.floor(G.time / 20)) % lines.length];
   }
 
+  function pick(arr, n) { return arr[Math.abs(n) % arr.length]; }
+  function steleText(a) {
+    var d = a.deed, ago = G.year - d.year, carved = { irrigate: 'Here the canals were dug', rally: 'Here the people stood fast', heal: 'Here the sickness was driven out',
+      settle: 'Here the first families came', teach: 'Here the new learning was taught', discord: 'Here the granaries burned', assassinate: 'Here a king fell',
+      prophet: 'Here the prophet spoke', bless: 'Here the beast was slain and the land bloomed', blight: 'Here the fields were salted', tribe: 'Here a people was born',
+      knowledge: 'Here the old knowledge returned', plague: 'Here the wells were poisoned' }[d.type] || 'Here history turned';
+    return '<p class="vision">' + carved + ', in the year ' + d.year + ', by ' + esc(d.who) + '.</p>' +
+      '<p class="muted">' + (ago <= 1 ? 'The stone is freshly cut.' : ago < 60 ? 'Lichen is starting on the letters. ' + ago + ' years have passed.' : 'The letters are worn almost smooth. It has been ' + ago + ' years.') + ' ' + esc(d.why) + '</p>';
+  }
   function talk(a) {
+    if (!Quests.waitingOn(a) && Gear.refuses(a)) return;
     var q = Quests.turnIn(a);
     if (q) {
       dialog({ kicker: a.name, title: q.title, html: '<p>"You have done it. Thank you." Word of what you did spreads.</p>', buttons: [{ label: 'Continue' }] });
@@ -1014,6 +1169,10 @@
       case 'sentry': dialog({ kicker: a.name, title: '', html: '<p>"Keep your hand away from that sword, stranger, and move along."</p>', buttons: [{ label: 'Goodbye' }] }); return;
       case 'lord': dialog({ kicker: civName(a.faction), title: a.name, html: '<p>' + esc(a.name) + ' of the <b>' + esc(civName(a.faction)) + '</b> looks you over. "A traveller. Speak quickly; I have a realm to rule."</p>' + localReport(a.prov), buttons: [{ label: 'Bow and leave' }] }); return;
       case 'stranger': visionTalk(a); return;
+      case 'smith': Gear.smithTalk(a); return;
+      case 'stele': dialog({ kicker: 'A stone marker', title: '', html: steleText(a), buttons: [{ label: 'Step back' }] }); return;
+      case 'prophet': dialog({ kicker: a.name, title: '', html: '<p>"' + pick(['Walk on. I am right behind you.', 'They will listen. They have been waiting so long for someone to tell them they belong to each other.', 'Do not fear for me. Fear for the road.'], Math.floor(G.time)) + '"</p>', buttons: [{ label: 'Onward' }] }); return;
+      case 'exile': dialog({ kicker: 'Exile', title: '', html: '<p>"' + pick(['Is it much further?', 'My father would never have dared. Neither would I, without you.', 'When we get there, we will need a name.'], a.id + Math.floor(G.time)) + '"</p>', buttons: [{ label: 'Onward' }] }); return;
       case 'royal': if (royalTalk(a)) return; break;
     }
     var waiting = Quests.waitingOn(a);
@@ -1022,8 +1181,15 @@
       dialog({ kicker: a.name, title: waiting.title, html: '<p>"Is it done?"</p><p class="obj">' + (obj ? esc(obj.text) + (obj.pi >= 0 ? ', ' + dirText(provOf(G.player.x, G.player.y), obj.pi) : '') : '') + '</p>', buttons: [{ label: 'Not yet' }] });
       return;
     }
+    if (Gear.suspected() && (a.role === 'elder' || a.role === 'scholar' || a.role === 'royal' || a.role === 'spymaster')) {
+      dialog({ kicker: a.name, title: '', html: '<p>' + esc(a.name) + ' will not come near you. "People are talking about you, stranger, and about that ' + esc(G.player.eq.ranged.gun ? G.player.eq.ranged.name.toLowerCase() : 'thing you carry') + '. Put away whatever devilry that is and let the talk die down. Then we\'ll see."</p><p class="muted">Suspicion fades when you carry nothing out of its time (I to change what you wield), or in the wilds where no one sees you.</p>', buttons: [{ label: 'Leave' }] });
+      return;
+    }
     var intro = '', offers = Quests.offersFor(a);
-    if (a.role === 'elder') intro = '<p>' + esc(a.name) + ' leans on a staff.</p>' + localReport(a.prov);
+    if (a.role === 'elder') {
+      var told = deedsNear(a.prov, 3);
+      intro = '<p>' + esc(a.name) + ' leans on a staff.</p>' + (told.length ? '<p><i>"' + legend(told[told.length - 1]) + '"</i></p>' : '') + localReport(a.prov);
+    }
     else if (a.role === 'spymaster') intro = spymasterIntro();
     else if (a.role === 'scholar') intro = scholarIntro();
     else if (a.role === 'royal') intro = royalIntro(a);
@@ -1036,7 +1202,7 @@
 
   function offerDialog(a, intro, offers, idx) {
     idx = idx || 0;
-    var q = offers[idx], btns = [{ label: 'Accept', fn: function () { Quests.accept(q); } }];
+    var q = offers[idx], btns = q.choices ? q.choices.map(function (c, ci) { return { label: c.label, fn: function () { Quests.accept(q, ci); } }; }) : [{ label: 'Accept', fn: function () { Quests.accept(q); } }];
     if (offers.length > 1) btns.push({ label: 'Something else?', fn: function () { offerDialog(a, '', offers, (idx + 1) % offers.length); }, keep: true });
     btns.push({ label: 'Not now' });
     dialog({ kicker: a.name, title: q.title, html: intro + Quests.describe(q), buttons: btns });
@@ -1191,8 +1357,10 @@
     if (s.pop[pi] <= 0 || s.owner[pi] < 0) { toast('You can only rest in a village or town.'); return; }
     if (G.actors.some(function (a) { return a.hostile && Math.hypot(a.x - p.x, a.y - p.y) < 12; })) { toast('You cannot rest with enemies nearby.'); return; }
     passMonths(3);
-    p.hp = maxHp(p); p.arrows = 40; p.potions = Math.min(5, Math.max(p.potions, p.potions + 1));
-    toast('You rest a season among the ' + esc(civName(s.cSig[s.owner[pi]])) + '. Health restored, quiver full, +1 potion. It is now ' + MONTHS[G.month] + ', year ' + G.year + '.', 6000);
+    if (Gear.suspected()) { toast('No one here will give you a bed. Not with that ' + esc(G.player.eq.ranged.gun ? G.player.eq.ranged.name.toLowerCase() : 'strange gear') + '.'); return; }
+    p.hp = maxHp(p); p.potions = Math.min(5, Math.max(p.potions, p.potions + 1));
+    var stock = Gear.restock(pi);
+    toast('You rest a season among the ' + esc(civName(s.cSig[s.owner[pi]])) + '. Health restored, +1 potion. ' + stock + ' It is now ' + MONTHS[G.month] + ', year ' + G.year + '.', 7000);
   }
 
   function travelTo(y) {
@@ -1200,8 +1368,9 @@
     var p = G.player;
     if (y === G.year) return;
     var from = G.year;
-    Quests.abandonAll('the age they belonged to is gone');
+    Quests.abandonAll('the age they belonged to is gone', true);
     seekYear(y);
+    p.suspicion = 0; G.gunWarned = false;
     G.month = 2;
     G.edgeWarned = false;
     resetActors();
@@ -1265,6 +1434,8 @@
     });
     G.projectiles.forEach(function (pr) {
       var x = ox + pr.x * TS, y = oy + pr.y * TS, a = Math.atan2(pr.vy, pr.vx);
+      if (pr.bullet) { ctx.strokeStyle = 'rgba(255,240,180,0.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 28, y - Math.sin(a) * 28); ctx.lineTo(x, y); ctx.stroke(); return; }
+      if (pr.stone) { ctx.fillStyle = '#9a948a'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); return; }
       ctx.strokeStyle = pr.mine ? '#f4e2b0' : '#ffb0a0'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 12, y - Math.sin(a) * 12); ctx.lineTo(x, y); ctx.stroke();
       ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill();
@@ -1340,6 +1511,12 @@
     else if (kind === 'bow') { ctx.strokeStyle = '#8a5a2a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, r * 0.9, -1.2, 1.2); ctx.stroke(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.cos(-1.2) * r * 0.9, Math.sin(-1.2) * r * 0.9); ctx.lineTo(Math.cos(1.2) * r * 0.9, Math.sin(1.2) * r * 0.9); ctx.stroke(); }
     else if (kind === 'staff') { ctx.fillStyle = '#7a5a30'; ctx.fillRect(-2, -1.5, r * 1.8, 3); }
     else if (kind === 'axe') { ctx.fillStyle = '#6a4a28'; ctx.fillRect(0, -1.5, r * 1.6, 3); ctx.fillStyle = '#bbc'; ctx.fillRect(r * 1.2, -6, 6, 9); }
+    else if (kind === 'longsword') { ctx.fillStyle = '#e4e8f0'; ctx.fillRect(2, -1.5, r * 2.2, 3); ctx.fillStyle = '#6a5a3a'; ctx.fillRect(-1, -6, 3, 12); }
+    else if (kind === 'rapier' || kind === 'sabre') { ctx.strokeStyle = '#eef'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(2, 0); if (kind === 'sabre') ctx.quadraticCurveTo(r, -4, r * 2, -2); else ctx.lineTo(r * 2.2, 0); ctx.stroke(); ctx.strokeStyle = '#d4b04a'; ctx.beginPath(); ctx.arc(1, 0, 4, -1.6, 1.6); ctx.stroke(); }
+    else if (kind === 'sling') { ctx.strokeStyle = '#8a6a48'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(r * 0.8, 3); ctx.lineTo(r * 1.1, -2); ctx.stroke(); }
+    else if (kind === 'crossbow') { ctx.fillStyle = '#6a4a28'; ctx.fillRect(0, -1.5, r * 1.5, 3); ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(r * 1.2, 0, 7, -1.9, 1.9, true); ctx.stroke(); }
+    else if (kind === 'gun') { ctx.fillStyle = '#5a3a1e'; ctx.fillRect(-3, -2, 9, 5); ctx.fillStyle = '#3a3e46'; ctx.fillRect(4, -1.5, r * 2, 3); }
+    else if (kind === 'shield') { ctx.fillStyle = '#7a5a3a'; ctx.beginPath(); ctx.ellipse(r * 0.9, 0, 3.5, r * 0.9, 0, 0, 7); ctx.fill(); ctx.strokeStyle = '#c8c0a8'; ctx.lineWidth = 1.5; ctx.stroke(); }
     ctx.restore();
   }
   function hood(color) { return function (x, y, r) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y - 1, r * 0.62, Math.PI * 0.9, Math.PI * 2.1); ctx.fill(); }; }
@@ -1367,7 +1544,13 @@
 
   function drawActor(a, x, y) {
     if (a.deco) {
-      if (a.kind === 'tent') {
+      if (a.kind === 'ruins') {
+        shadow(x, y, 16);
+        ctx.fillStyle = '#9a958a'; ctx.fillRect(x - 14, y - 34, 9, 34); ctx.fillRect(x + 6, y - 22, 9, 22);
+        ctx.fillStyle = '#b4aea0'; ctx.fillRect(x - 16, y - 38, 13, 5);
+        ctx.fillStyle = '#7d786e'; ctx.fillRect(x - 4, y - 6, 12, 6);
+        ctx.fillStyle = 'rgba(80,110,60,0.6)'; ctx.fillRect(x - 14, y - 12, 9, 4);
+      } else if (a.kind === 'tent') {
         shadow(x, y, 18);
         ctx.fillStyle = '#9a7a52'; ctx.beginPath(); ctx.moveTo(x - 20, y); ctx.lineTo(x, y - 30); ctx.lineTo(x + 20, y); ctx.fill();
         ctx.fillStyle = '#3a2a1a'; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x, y - 14); ctx.lineTo(x + 5, y); ctx.fill();
@@ -1383,15 +1566,40 @@
     }
     if (a.obj) {
       shadow(x, y, 18);
-      ctx.fillStyle = '#8a6a3a'; ctx.fillRect(x - 15, y - 26, 30, 26);
-      ctx.fillStyle = '#c8a050'; ctx.beginPath(); ctx.moveTo(x - 19, y - 24); ctx.lineTo(x, y - 40); ctx.lineTo(x + 19, y - 24); ctx.fill();
-      ctx.fillStyle = '#e8d090'; ctx.fillRect(x - 10, y - 10, 7, 9); ctx.fillRect(x + 3, y - 10, 7, 9);
+      if (a.kind === 'well') {
+        ctx.fillStyle = '#8a857c'; ctx.beginPath(); ctx.ellipse(x, y - 8, 15, 8, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#23384e'; ctx.beginPath(); ctx.ellipse(x, y - 10, 10, 5, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#6a4a28'; ctx.fillRect(x - 13, y - 32, 3, 22); ctx.fillRect(x + 10, y - 32, 3, 22); ctx.fillRect(x - 13, y - 33, 26, 3);
+      } else {
+        ctx.fillStyle = a.kind === 'storehouse' ? '#7a6248' : '#8a6a3a'; ctx.fillRect(x - 15, y - 26, 30, 26);
+        ctx.fillStyle = a.kind === 'storehouse' ? '#8a8a8a' : '#c8a050'; ctx.beginPath(); ctx.moveTo(x - 19, y - 24); ctx.lineTo(x, y - 40); ctx.lineTo(x + 19, y - 24); ctx.fill();
+        ctx.fillStyle = '#e8d090'; ctx.fillRect(x - 10, y - 10, 7, 9); ctx.fillRect(x + 3, y - 10, 7, 9);
+      }
       if (a.hp < a.maxHp) { ctx.fillStyle = 'rgba(255,' + (120 + Math.sin(G.time * 20) * 60) + ',40,0.8)'; ctx.beginPath(); ctx.arc(x + rnd(-6, 6), y - 30, 5 + (1 - a.hp / a.maxHp) * 8, 0, 7); ctx.fill(); }
       if (a.flash > 0) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(x - 15, y - 40, 30, 40); }
       hpBar(a, x, y - 46);
       return;
     }
-    if (a.beast) { drawBeast(a, x, y); if (a.hp < a.maxHp) hpBar(a, x, y - a.r * TS * 2.2); return; }
+    if (a.role === 'stele') {
+      shadow(x, y, 12);
+      ctx.fillStyle = '#a8a294'; ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x - 8, y - 30); ctx.quadraticCurveTo(x, y - 38, x + 8, y - 30); ctx.lineTo(x + 9, y); ctx.fill();
+      ctx.fillStyle = 'rgba(60,50,40,0.6)'; for (var ln = 0; ln < 4; ln++) ctx.fillRect(x - 5, y - 26 + ln * 5, 10, 1.5);
+      ctx.fillStyle = 'rgba(255,220,120,' + (0.25 + Math.sin(G.time * 2) * 0.1) + ')'; ctx.beginPath(); ctx.arc(x, y - 18, 16, 0, 7); ctx.fill();
+      return;
+    }
+    if (a.beast) {
+      if (a.kind === 'greatbeast') {
+        var sc = 1.6;
+        ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
+        drawBeast({ kind: a.look, r: a.r / sc, face: a.face, walkT: a.walkT, state: a.state, flash: a.flash }, x, y);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(160,20,20,0.25)'; ctx.beginPath(); ctx.arc(x, y - 20, 34, 0, 7); ctx.fill();
+        hpBar(a, x, y - a.r * TS * 2.6);
+        ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd76a'; ctx.fillText(a.name, x, y - a.r * TS * 2.6 - 6); ctx.textAlign = 'left';
+        return;
+      }
+      drawBeast(a, x, y); if (a.hp < a.maxHp) hpBar(a, x, y - a.r * TS * 2.2); return;
+    }
     var sig = a.faction, o = { face: a.face, walk: a.walkT, r: a.r, flash: a.flash > 0, wind: a.state === 'wind' || a.state === 'chargeWind' || a.state === 'aim' };
     var tunic = sig ? L.civCSS(sig, 1, -10) : '#7a6a58';
     switch (a.kind) {
@@ -1409,11 +1617,22 @@
       case 'bowman': o.body = tunic; o.hat = helmet('#8a9098'); o.weapon = 'bow'; break;
       case 'captain': o.body = tunic; o.hat = helmet('#d8c070'); o.weapon = 'sword'; o.belt = '#f2c94c'; break;
       case 'ruler': o.body = tunic; o.hat = crown; o.weapon = 'sword'; o.belt = '#f2c94c'; break;
+      case 'shield': o.body = tunic; o.hat = helmet('#a8aeb6'); o.weapon = 'shield'; o.belt = '#3a2a1a'; break;
+      case 'rebel': o.body = '#8a4a3a'; o.hat = hood('#6a2a2a'); o.weapon = 'club'; break;
+      case 'hunter': o.body = '#2a2a2a'; o.hat = hood('#1a1a1a'); o.weapon = 'spear'; o.belt = '#d84a2a'; break;
+      case 'warden': o.body = '#5a6a5a'; o.hat = helmet('#7a8a7a'); o.weapon = 'axe'; o.head = '#b8c4b0'; break;
+      case 'smith': o.body = '#5a4a3a'; o.belt = '#2a1a0a'; o.weapon = 'club'; break;
+      case 'prophet': o.body = '#efeae0'; o.hat = hood('#d8d0c0'); o.weapon = 'staff'; break;
+      case 'exile': o.body = sig ? L.civCSS(sig, 1, 10) : '#9a8a70'; o.hat = hood('#6a5a48'); break;
       default: o.body = '#888';
     }
+    if (a.elite) { ctx.strokeStyle = 'rgba(255,200,60,0.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y + 2, a.r * TS * 1.3, a.r * TS * 0.55, 0, 0, 7); ctx.stroke(); }
+    if (a.kind === 'prophet') { ctx.fillStyle = 'rgba(255,240,180,0.25)'; ctx.beginPath(); ctx.arc(x, y - 16, 20, 0, 7); ctx.fill(); }
     drawHuman(x, y, o);
+    if (a.follow) { hpBar({ hp: a.hp, maxHp: a.maxHp, obj: false, boss: false }, x, y - a.r * TS * 3.4); ctx.fillStyle = '#7dffa0'; }
+    if (a.elite && a.hostile) { ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffc94a'; ctx.fillText(a.name, x, y - a.r * TS * 3.4 - 6); ctx.textAlign = 'left'; }
     if (a.state === 'chargeWind') { ctx.strokeStyle = 'rgba(255,40,40,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y - 10); ctx.lineTo(x + Math.cos(a.face) * 120, y - 10 + Math.sin(a.face) * 120); ctx.stroke(); }
-    if (a.hostile && (a.hp < a.maxHp || a.boss)) hpBar(a, x, y - a.r * TS * 3.4);
+    if (a.hostile && (a.hp < a.maxHp || a.boss || a.elite)) hpBar(a, x, y - a.r * TS * 3.4);
     if (a.boss) { ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd76a'; ctx.fillText(a.name, x, y - a.r * TS * 3.4 - 6); ctx.textAlign = 'left'; }
     if (a.npc) {
       var mark = '', q = Quests.waitingOn(a);
@@ -1437,8 +1656,11 @@
   }
 
   function drawPlayer(p, x, y) {
-    var o = { face: p.face, walk: p.walkT, r: 0.32, body: '#2f7f8f', belt: '#c8a050', boat: p.boat, hat: hood('#1f5f6f'), flash: p.inv > 0 && p.hurt > 0 && Math.sin(G.time * 40) > 0 };
-    o.weapon = p.bowT > 0 || G.keys.k ? 'bow' : 'sword';
+    var cl = p.eq.clothes, body = cl && cl.sig ? L.civCSS(cl.sig, 1, cl.age >= 4 ? -25 : 10) : '#2f7f8f';
+    var o = { face: p.face, walk: p.walkT, r: 0.32, body: body, belt: cl && cl.age >= 5 ? '#2a2a2a' : '#c8a050', boat: p.boat, hat: cl && cl.age >= 4 ? null : hood(cl && cl.age <= 1 ? '#6a4a2a' : '#1f5f6f'), flash: p.inv > 0 && p.hurt > 0 && Math.sin(G.time * 40) > 0 };
+    if (cl && cl.age >= 5) o.hat = function (hx, hy, r) { ctx.fillStyle = '#222'; ctx.fillRect(hx - r * 0.7, hy - r * 0.55, r * 1.4, 3); ctx.fillRect(hx - r * 0.42, hy - r * 1.25, r * 0.84, r * 0.75); };
+    o.weapon = p.bowT > 0 || G.keys.k ? p.eq.ranged.w : p.eq.melee.w;
+    if (p.eq.armor.age >= 4) o.hat = helmet(p.eq.armor.age >= 6 ? '#3a3e46' : '#b8bec8');
     // facing marker on the ground
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.save(); ctx.translate(x, y); ctx.rotate(p.face);
@@ -1466,7 +1688,15 @@
   function drawPickup(pk, x, y) {
     var b = Math.sin(pk.t * 3) * 3;
     shadow(x, y, 7);
-    if (pk.kind === 'herb') {
+    if (pk.kind === 'coin') {
+      ctx.fillStyle = '#d8dce6'; ctx.beginPath(); ctx.ellipse(x, y - 6 + b, 5, 4, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#9aa0b0'; ctx.fillRect(x - 2, y - 7 + b, 4, 2);
+    } else if (pk.kind === 'gear') {
+      ctx.fillStyle = 'rgba(255,200,80,' + (0.3 + Math.sin(pk.t * 4) * 0.15) + ')'; ctx.beginPath(); ctx.arc(x, y - 8 + b, 14, 0, 7); ctx.fill();
+      drawWeapon(x - 8, y - 8 + b, -0.6, pk.item.slot === 'melee' ? pk.item.w : pk.item.slot === 'ranged' ? pk.item.w : 'shield', 9, false);
+    } else if (pk.kind === 'relic') {
+      ctx.fillStyle = 'rgba(180,240,255,' + (0.3 + Math.sin(pk.t * 4) * 0.2) + ')'; ctx.beginPath(); ctx.arc(x, y - 8 + b, 16, 0, 7); ctx.fill();
+      ctx.fillStyle = '#b89a6a'; ctx.fillRect(x - 7, y - 16 + b, 10, 13); ctx.fillStyle = '#c8aa7a'; ctx.fillRect(x - 3, y - 14 + b, 10, 13);
+    } else if (pk.kind === 'herb') {
       ctx.fillStyle = 'rgba(180,220,255,' + (0.25 + Math.sin(pk.t * 4) * 0.15) + ')'; ctx.beginPath(); ctx.arc(x, y - 8 + b, 13, 0, 7); ctx.fill();
       ctx.fillStyle = '#3a8a4a'; ctx.fillRect(x - 1, y - 14 + b, 2, 12);
       ctx.fillStyle = '#c8d8ff'; for (var k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x + (k - 1) * 4, y - 14 + b - (k === 1 ? 3 : 0), 3, 0, 7); ctx.fill(); }
@@ -1501,6 +1731,9 @@
     } else if (e.type === 'ring') {
       ctx.strokeStyle = e.color; ctx.globalAlpha = 1 - f; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(x, y - 10, 10 + f * 40, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    } else if (e.type === 'muzzle') {
+      ctx.fillStyle = 'rgba(255,220,120,' + (1 - f) + ')'; ctx.beginPath(); ctx.arc(x, y - 12, 9 * (1 - f) + 4, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(200,200,200,' + (0.5 - f * 0.5) + ')'; ctx.beginPath(); ctx.arc(x + 6, y - 18 - f * 10, 8 + f * 10, 0, 7); ctx.fill();
     } else if (e.type === 'fireburst') {
       for (var j = 0; j < 8; j++) {
         ctx.fillStyle = ['#ff9a3c', '#ffd23c', '#ff5a2c'][j % 3]; ctx.globalAlpha = 1 - f;
@@ -1579,7 +1812,15 @@
     $('h-hp').style.width = (100 * p.hp / m) + '%';
     $('h-hpt').textContent = Math.ceil(p.hp) + ' / ' + m;
     $('h-xp').style.width = (100 * p.xp / xpNext(p.level)) + '%';
-    $('h-items').innerHTML = '<span title="Arrows">➶ ' + p.arrows + '</span><span title="Potions (Q)">⚱ ' + p.potions + '</span>' + (p.knowledge ? '<span title="Knowledge you carry">✎ ' + p.knowledge.tech + '</span>' : '');
+    var amL = p.eq.ranged.none ? 'nothing' : Gear.AMMO[p.eq.ranged.ammo].label, sus = p.suspicion || 0, susL = Gear.suspicionLabel(sus);
+    $('h-items').innerHTML = '<span title="' + esc(p.eq.ranged.name) + ' · ' + amL + '">' + (p.eq.ranged.gun ? '⁍ ' : '➶ ') + Gear.ammoOf(p) + '</span><span title="Potions (Q)">⚱ ' + p.potions + '</span><span title="Silver">◉ ' + p.silver + '</span>' + (p.knowledge ? '<span title="Knowledge you carry">✎ ' + p.knowledge.tech + '</span>' : '');
+    var dr = Gear.dressInfo(provOf(p.x, p.y));
+    $('h-dress').textContent = 'Dressed in ' + Gear.lower(p.eq.clothes) + ' · ' + (Gear.localAge(provOf(p.x, p.y)) < 0 ? 'no one to see' : 'you look ' + dr.label);
+    $('h-dress').className = 'gearline' + (dr.price >= 1.5 ? ' bad' : dr.price > 1 ? ' warnc' : '');
+    $('h-gear').textContent = p.eq.melee.name + ' · ' + p.eq.ranged.name + ' · ' + p.eq.armor.name + (p.concealed && p.concealed.length ? ' · hidden: ' + p.concealed.map(function (it) { return it.name; }).join(', ') : '');
+    $('h-sus').hidden = sus < 1;
+    $('h-sus').className = 'sus' + (sus >= Gear.HUNT ? ' hunt' : sus >= Gear.SUSPECT ? ' warn' : '');
+    $('h-sus').innerHTML = '<span>Suspicion' + (susL ? ': ' + susL : '') + '</span><div class="bar sb"><div style="width:' + sus + '%"></div></div>';
     $('h-year').textContent = 'Year ' + G.year;
     $('h-month').textContent = MONTHS[G.month];
     var pi = provOf(p.x, p.y), c = s.owner[pi], t = s.terrain[pi];
@@ -1607,7 +1848,8 @@
         (o.pi >= 0 ? '<div class="dir">' + (o.pi === ppi ? 'here' : dirName(o.pi % W - ppi % W, ((o.pi / W) | 0) - ((ppi / W) | 0)) + ' · ' + md(o.pi, ppi) + ' prov') + '</div>' : '') + '</div></div>';
     }).join('');
     $('k-potion').textContent = p.potions;
-    $('k-arrows').textContent = p.arrows;
+    $('k-arrows').textContent = Gear.ammoOf(p);
+    $('k-ranged').textContent = p.eq.ranged.none ? 'Nothing' : p.eq.ranged.gun ? 'Gun' : p.eq.ranged.w === 'sling' ? 'Sling' : p.eq.ranged.w === 'crossbow' ? 'Crossbow' : 'Bow';
     $('k-scope').classList.toggle('locked', !(G.stage === 'quest' || G.stage === 'won'));
     drawMinimap();
   }
@@ -1668,8 +1910,24 @@
     G.keys = {};
     if (id === 'scope') openScope();
     if (id === 'journal') renderJournal();
+    if (id === 'inv') { G.invSel = 0; renderInv(); }
   }
-  function closePanels() { ['scope', 'journal', 'help'].forEach(function (id) { $(id).hidden = true; }); G.panel = null; }
+  function closePanels() { ['scope', 'journal', 'help', 'inv'].forEach(function (id) { $(id).hidden = true; }); G.panel = null; }
+  function renderInv() {
+    var r = Gear.renderInventory(G.invSel);
+    G.invSel = r.sel;
+    $('inv-body').innerHTML = r.html;
+    Array.prototype.forEach.call($('inv-body').querySelectorAll('.inv-row'), function (el) {
+      el.onclick = function () { G.invSel = +el.getAttribute('data-i'); invUse('use'); };
+    });
+    var cur = $('inv-body').querySelector('.inv-row.sel');
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+  }
+  function invUse(action) {
+    var msg = Gear.invAction(G.invSel, action);
+    if (msg) toast(msg);
+    renderInv();
+  }
 
   function renderJournal() {
     var h = '<h3>Quests</h3>';
@@ -1782,35 +2040,44 @@
     g.fillStyle = '#8a90a0'; g.font = '10px system-ui, sans-serif';
     for (var t = 0; t <= HORIZON; t += 250) g.fillText(String(t), X(t) + 2, h - 2);
   }
+  function takeEcho(i) {
+    var ec = scope.echoes && scope.echoes[i];
+    if (!ec) return;
+    if (G.quests.length >= 6) { toast('You carry too many threads already (6 quests).'); return; }
+    var q = Quests.takeEcho(ec);
+    scope.year = clamp(ec.y0, 1, HORIZON - 1);
+    $('scope-year').value = scope.year;
+    toast('You take up the thread: <b>' + esc(q.title) + '</b>. Press Enter to travel to ' + scope.year + '.', 7000);
+    renderScope();
+  }
   function renderScopeText() {
     var f = curFate(), base = readFate(G.world.root), h = '';
     h += '<div class="sline"><span class="lbl">This timeline</span> ' + esc(G.cur.parent < 0 ? 'The world without you' : G.cur.name) + ' · ' + G.cur.interventions.length + ' deed' + (G.cur.interventions.length === 1 ? '' : 's') + '</div>';
     h += '<div class="sline ' + (saved(f) ? 'good' : 'bad') + '"><span class="lbl">Your people</span> ' + fateText(f) + '</div>';
     h += '<div class="sline muted"><span class="lbl">Without you</span> ' + fateText(base) + '</div>';
     if (G.goal) h += '<div class="sline"><span class="lbl">Goal</span> hold land in <b>' + G.goal.target + '</b></div>';
+    // echoes first: turning points of this timeline you could stand in (they include the Oracle's threads of fate)
+    scope.echoes = G.world.isComplete(G.cur) ? Quests.echoes() : [];
+    var dif = G.oracle && G.oracle.done ? G.oracle.difficulty() : null;
+    if (scope.echoes.length) {
+      h += '<div class="threads"><div class="lbl">Echoes of this timeline</div><div class="muted">Moments you could stand in. Press a number to take one up; it stays with you through time.' + (dif ? ' ' + dif.label + '.' : '') + '</div>' +
+        scope.echoes.map(function (e, i) {
+          return '<button class="thread echo' + (e.kind === 'thread' ? ' fated' : '') + '" data-echo="' + i + '"><span class="kk">' + (i + 1) + '</span> <b>' + esc(e.title) + '</b><br><span class="muted">' + esc(e.text) + '</span></button>';
+        }).join('') + '</div>';
+    } else if (G.stage === 'quest' && !(G.oracle && G.oracle.done)) h += '<div class="muted" style="margin:6px 0">The Chronoscope is still reading this timeline' + (G.oracle ? ' (' + Math.round(G.oracle.progress() * 100) + '%)' : '') + '…</div>';
+    else if (dif) h += '<div class="muted" style="margin:6px 0">' + dif.label + '.</div>';
     if (f.state === 'falls' && G.world.isComplete(G.cur)) {
       var key = G.cur.id + ':' + G.cur.version;
       if (!scope.whyKey || scope.whyKey !== key) { scope.whyKey = key; scope.why = Story.whyFall(G.cur, G.home.sig, f.end, null); }
       var w = scope.why;
       if (w && w.verdict) h += '<div class="why"><b>Why they fall:</b> ' + w.verdict + (w.advice && w.advice[0] ? '<div class="advice">' + w.advice[0] + '</div>' : '') + '</div>';
     }
-    if (G.oracle) {
-      var wins = G.oracle.wins().slice(0, 8);
-      h += '<div class="threads"><div class="lbl">Threads of fate' + (G.oracle.done ? '' : ' (reading… ' + Math.round(G.oracle.progress() * 100) + '%)') + '</div>';
-      var dif = G.oracle.difficulty();
-      if (dif) h += '<div class="muted">' + dif.label + '.</div>';
-      h += wins.map(function (r) {
-        var who = r.type === 'assassinate' || r.type === 'discord' ? (G.goal.foeSig ? civName(G.goal.foeSig) : 'the rival') : G.home.name;
-        var q = { assassinate: 'kill the ruler of the ' + who + ' (spymaster)', discord: 'sow discord in the ' + who + ' capital (spymaster)', rally: 'rally the ' + who + ' capital (ruler)', irrigate: 'irrigate the ' + who + ' capital (scholar)', teach: 'teach the ' + who + ' (scholar)' }[r.type];
-        return '<button class="thread" data-t="' + r.t + '">◈ <b>' + r.t + '</b>: ' + esc(q) + ' at (' + r.x + ', ' + r.y + ')</button>';
-      }).join('') + '</div>';
-    } else if (G.stage === 'quest') h += '<div class="muted">The Chronoscope is still reading the threads of this timeline…</div>';
     // chronicle around the selected year
     var evs = G.cur.events.filter(function (e) { return Math.abs(e.t - scope.year) <= 15 && (e.major || e.a === G.home.sig || e.b === G.home.sig || (G.goal && (e.a === G.goal.foeSig || e.b === G.goal.foeSig))); }).slice(-8);
     if (evs.length) h += '<div class="lbl" style="margin-top:8px">Around ' + scope.year + '</div><ul class="log">' + evs.map(function (e) { return '<li><span class="t">' + e.t + '</span> ' + esc(e.text) + '</li>'; }).join('') + '</ul>';
     $('scope-text').innerHTML = h;
-    Array.prototype.forEach.call($('scope-text').querySelectorAll('.thread'), function (b) {
-      b.onclick = function () { scope.year = +b.getAttribute('data-t'); $('scope-year').value = scope.year; renderScope(); };
+    Array.prototype.forEach.call($('scope-text').querySelectorAll('.echo'), function (b) {
+      b.onclick = function () { takeEcho(+b.getAttribute('data-echo')); };
     });
   }
 
@@ -1831,7 +2098,16 @@
         return;
       }
       if (G.panel) {
-        if (k === 'escape' || (k === 't' && G.panel === 'scope') || (k === 'l' && G.panel === 'journal') || (k === 'h' && G.panel === 'help')) { closePanels(); return; }
+        if (k === 'escape' || (k === 't' && G.panel === 'scope') || (k === 'l' && G.panel === 'journal') || (k === 'h' && G.panel === 'help') || (k === 'i' && G.panel === 'inv')) { closePanels(); return; }
+        if (G.panel === 'inv') {
+          e.preventDefault();
+          if (k === 'arrowup' || k === 'w') { G.invSel--; renderInv(); }
+          else if (k === 'arrowdown' || k === 's') { G.invSel++; renderInv(); }
+          else if (k === 'enter' || k === 'e' || k === ' ') invUse('use');
+          else if (k === 'x' || k === 'delete') invUse('drop');
+          else if (k === 'u') { Gear.toggleConceal(); renderInv(); }
+          return;
+        }
         if (G.panel === 'scope') {
           var step = e.shiftKey ? 10 : 1;
           if (k === ',' || k === 'arrowleft') { scope.year = Math.max(1, scope.year - step); $('scope-year').value = scope.year; renderScope(); }
@@ -1847,6 +2123,7 @@
             if (nx != null) { scope.year = nx; $('scope-year').value = scope.year; renderScope(); }
           }
           if (k === 'enter') { e.preventDefault(); $('scope-go').click(); }
+          if (/^[1-6]$/.test(k)) takeEcho(+k - 1);
         }
         return;
       }
@@ -1858,6 +2135,8 @@
       else if (k === 'r') rest();
       else if (k === 't') { if (scopeUnlocked()) openPanel('scope'); else toast('You do not have the Chronoscope yet.'); }
       else if (k === 'l') openPanel('journal');
+      else if (k === 'i') openPanel('inv');
+      else if (k === 'u') Gear.toggleConceal();
       else if (k === 'h' || k === '?') openPanel('help');
     });
     window.addEventListener('keyup', function (e) { G.keys[e.key.toLowerCase()] = false; });
@@ -1916,6 +2195,7 @@
     var tale = Story.homeStory(s, pick.c, root, START, birth);
     G.home = { sig: pick.sig, name: tale.name, ruler: tale.ruler, birth: birth };
     G.player = newPlayer(Story.personName(pick.sig, G.world.seed), 1, 1);
+    equipNative(G.player, birth);
     var f = findFree(birth, C + 1, C + 1) || provCenter(birth);
     G.player.x = f.x; G.player.y = f.y;
     G.cam.x = f.x; G.cam.y = f.y;
@@ -1967,7 +2247,9 @@
   window.RPG = {
     G: G, esc: esc, findFree: findFree, dirText: dirText, homeCiv: homeCiv, foeCiv: foeCiv, rulerName: rulerName, isActive: isActive,
     spawnAt: spawnAt, spawnNear: spawnNear, spawnPickup: spawnPickup, spawnDeco: spawnDeco, applyDeed: applyDeed, toast: toast,
-    journal: journal, passMonths: passMonths, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
+    journal: journal, passMonths: passMonths, dialog: dialog, provCenter: provCenter,
+    curFate: function () { return curFate(); },
+    stateAt: function (y) { G.echoView = G.echoView || new Timeline.View(G.world); return G.echoView.seek(G.cur, clamp(y, 0, HORIZON - 1)); }, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
     // for testing and debugging from the console
     debug: { travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,
       step: function (dt) { update(dt); }, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
