@@ -191,3 +191,8 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 .qline.here { color: var(--green); border-color: var(--green); }
 .qline.back { color: var(--cyan); border-color: var(--cyan); }
 #tracker .obj.dormant { opacity: 0.6; }
+
+.strain { margin-top: 6px; font-size: 11px; color: #9fe8ff; }
+.strain .bar.sb { height: 5px; margin-top: 3px; }
+.strain .bar.sb > div { background: #7df0ff; }
+.strain.hot { color: #ff9a9a; } .strain.hot .bar.sb > div { background: #ff7a7a; }

@@ -137,6 +137,24 @@ back. But:
 - **Selling the future.** Sell a far-future item to a smith and their
   people take it apart: a real knowledge deed for their whole realm.
 
+## Rewinding a fight
+
+Once you carry the Chronoscope, **hold G**: the world slows to a crawl while
+you choose how far back to slip (2 to 10 seconds, longer the longer you
+hold); release to go. It is a true rewind for everything still alive:
+positions, wounds, attack timers, arrows in flight, the people you escort.
+The dead stay dead (so kills, loot and deeds stay consistent), and you
+keep your own wounds: time flows on for you, and nothing magic heals you.
+Your past self has the health you had then, and the enemies who wounded you
+are still fighting *it*, so those wounds land on your past self, unless this
+time things go differently. **Your past self** appears and replays exactly what you did
+(every step, swing and shot), fighting beside you; rewind again and there
+are three of you. Limits: each rewind costs **strain** (12 + 3.5 per second;
+it cools at 5 a second; nothing above 100), at most three past selves at
+once, and if enemies kill a past self the **paradox** costs you health and
+strain. Rewinding where people can see you feeds suspicion. A rewind never
+touches the timeline: history moves a year at a time.
+
 ## Renown and danger
 
 Quests done for your own people earn **renown**. The spymaster offers the
@@ -166,7 +184,7 @@ muster + canal + teaching in 3, both together in 7, and two such campaigns
 
 ## Controls
 
-WASD move (you face the way you walk) · J sword · K bow (hold to strafe around the
+WASD move (you face the way you walk) · G (hold) rewind 2–10 s · J sword · K bow (hold to strafe around the
 locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · T Chronoscope · L journal · H help.
 Attacks lock on to the nearest foe in front of you. Dialogs: 1–9 / Enter / Esc.
 Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where you left, Home, Enter to travel.

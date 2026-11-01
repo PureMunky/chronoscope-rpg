@@ -340,6 +340,8 @@
       a.hostile = false;
       if (a.follow) { a.maxHp = a.hp = kind === 'prophet' ? 140 : 70; a.speed = 4.2; }
       if (!a.name) a.name = kind === 'villager' ? 'Villager' : kind;
+    } else if (kind === 'ghost') {
+      a.ghost = true; a.r = 0.3; a.hostile = false;
     } else if (kind === 'tent' || kind === 'fire' || kind === 'ruins') {
       a.deco = true; a.r = 0.4;
     } else {
@@ -492,7 +494,7 @@
     return G.deeds.filter(function (d) { return md(d.pi, pi) <= r && d.year < G.year && G.cur.interventions.indexOf(d.iv) >= 0; });
   }
   function despawnProv(pi, keepQuest) {
-    G.actors = G.actors.filter(function (a) { return a.prov !== pi || (keepQuest && a.qid) || a.role === 'stranger' || a.follow; });
+    G.actors = G.actors.filter(function (a) { return a.prov !== pi || (keepQuest && a.qid) || a.role === 'stranger' || a.follow || a.ghost; });
     G.pickups = G.pickups.filter(function (pk) { return pk.prov !== pi || (keepQuest && pk.qid); });
     if (!keepQuest) Quests.despawned(pi);
   }
@@ -520,6 +522,7 @@
   }
   function resetActors() {
     G.actors = [];
+    G.hist = []; G.trail = [];
     G.pickups = []; G.projectiles = [];
     for (var key in G.active) Quests.despawned(+key);
     G.active = {};
@@ -645,7 +648,7 @@
     a.hp -= dmg; a.flash = 0.12;
     floatText(a.x, a.y, String(dmg), '#ffe08a');
     if (!a.obj) {
-      var ang = Math.atan2(a.y - p.y, a.x - p.x);
+      var ang = Math.atan2(a.y - sy, a.x - sx);
       var kf = (a.boss ? 0.3 : 1) * (a.state === 'wind' ? BAL.kbWind : 1);
       a.kbx += Math.cos(ang) * kb * kf; a.kby += Math.sin(ang) * kb * kf;
       if (a.state === 'idle' || a.state === 'return') { a.state = 'chase'; alertNear(a); }
@@ -717,12 +720,17 @@
     p.swingT = 0.2; p.swingCd = 0.38;
     addEffect({ type: 'slash', x: p.x, y: p.y, ang: p.face, life: 0.18 });
     var dmg = swordDmg();
+    meleeHit(p.x, p.y, p.face, dmg);
+    G.frameEv.swing = dmg;
+  }
+  /** One sword stroke from (x, y) facing `face`: everything hostile in the arc is hit. */
+  function meleeHit(x, y, face, dmg) {
     G.actors.slice().forEach(function (a) {
       if (!a.hostile && !a.obj) return;
-      var d = Math.hypot(a.x - p.x, a.y - p.y) - a.r;
+      var d = Math.hypot(a.x - x, a.y - y) - a.r;
       if (d > 1.25) return;
-      if (d > 0.35 && angDiff(p.face, Math.atan2(a.y - p.y, a.x - p.x)) > 1.25) return;
-      damageActor(a, dmg * rnd(0.85, 1.15), 4.5);
+      if (d > 0.35 && angDiff(face, Math.atan2(a.y - y, a.x - x)) > 1.25) return;
+      damageActor(a, dmg * rnd(0.85, 1.15), 4.5, x, y);
     });
   }
   function shoot() {
@@ -739,7 +747,9 @@
     var bt = bowTarget();
     if (bt) p.face = Math.atan2(bt.y - p.y, bt.x - p.x);
     var sp = rw.speed;
-    G.projectiles.push({ x: p.x + Math.cos(p.face) * 0.4, y: p.y + Math.sin(p.face) * 0.4, vx: Math.cos(p.face) * sp, vy: Math.sin(p.face) * sp, dmg: bowDmg(), mine: true, life: 12.5 / sp, bullet: !!rw.gun, stone: rw.w === 'sling' });
+    var shot = { x: p.x + Math.cos(p.face) * 0.4, y: p.y + Math.sin(p.face) * 0.4, vx: Math.cos(p.face) * sp, vy: Math.sin(p.face) * sp, dmg: bowDmg(), mine: true, life: 12.5 / sp, bullet: !!rw.gun, stone: rw.w === 'sling' };
+    G.projectiles.push(shot);
+    G.frameEv.shot = { vx: shot.vx, vy: shot.vy, dmg: shot.dmg, life: shot.life, bullet: shot.bullet, stone: shot.stone, w: rw.w };
     if (rw.gun) { addEffect({ type: 'muzzle', x: p.x + Math.cos(p.face) * 0.7, y: p.y + Math.sin(p.face) * 0.7, life: 0.12 }); G.shake = 0.12; Gear.onShot(); }
   }
   function enemyShoot(a) {
@@ -749,14 +759,17 @@
     a.face = ang;
     G.projectiles.push({ x: a.x + Math.cos(ang) * 0.4, y: a.y + Math.sin(ang) * 0.4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: a.dmg, mine: false, life: 1.4, src: a });
   }
-  /** Who an enemy goes for: you, or someone you are escorting if they are closer. */
+  /**
+   * Who an enemy goes for: you, someone you are escorting if they are closer, or your past
+   * self, whom enemies keep fighting as they did the first time (it is the you they were facing).
+   */
   function foeTarget(a) {
     var p = G.player, best = p, bd = p.dead ? 1e9 : Math.hypot(p.x - a.x, p.y - a.y);
     for (var k = 0; k < G.actors.length; k++) {
       var f = G.actors[k];
-      if (!f.follow) continue;
-      var d = Math.hypot(f.x - a.x, f.y - a.y);
-      if (d < bd - 0.8) { bd = d; best = f; }
+      if (!(f.follow || (f.ghost && !f.hidden))) continue;
+      var d = Math.hypot(f.x - a.x, f.y - a.y) - (f.ghost ? 2.5 : -0.8);
+      if (d < bd) { bd = d; best = f; }
     }
     return best;
   }
@@ -767,8 +780,8 @@
     if (f.hp <= 0) {
       var i = G.actors.indexOf(f);
       if (i >= 0) G.actors.splice(i, 1);
-      addEffect({ type: 'puff', x: f.x, y: f.y, life: 0.6, color: '#ddd' });
-      Quests.onFollowerDeath(f);
+      addEffect({ type: 'puff', x: f.x, y: f.y, life: 0.6, color: f.ghost ? '#9ff' : '#ddd' });
+      if (f.ghost) paradox(f); else Quests.onFollowerDeath(f);
     }
   }
   function hurt(target, dmg, src) { if (target === G.player) hurtPlayer(dmg, src); else hurtFollower(target, dmg); }
@@ -779,6 +792,7 @@
     if (!ix && !iy) { ix = Math.cos(p.face); iy = Math.sin(p.face); }
     var l = Math.hypot(ix, iy);
     p.rollX = ix / l; p.rollY = iy / l; p.rollT = 0.22; p.rollCd = 0.75; p.inv = Math.max(p.inv, 0.3);
+    G.frameEv.roll = true;
   }
   function drinkPotion() {
     var p = G.player, m = maxHp(p);
@@ -842,7 +856,10 @@
   // ---------------------------------------------------------------------------
   function update(dt) {
     G.time += dt;
+    G.wt = (G.wt || 0) + dt;      // world time: the clock a rewind turns back
+    G.frameEv = {};
     updatePlayer(dt);
+    recordFrame(dt);
     var p = G.player;
     G.flowT = (G.flowT || 0) - dt;
     if (G.flowT <= 0) { updateFlow(); G.flowT = 0.2; }
@@ -906,6 +923,7 @@
   function updateActor(a, dt) {
     a.flash -= dt; a.cd -= dt; a.cd2 -= dt;
     if (a.deco) return;
+    if (a.ghost) { updateGhost(a, dt); return; }
     if (a.kbx || a.kby) {
       move(a, a.kbx * dt, a.kby * dt, true);
       var dec = Math.pow(0.0005, dt);
@@ -1025,9 +1043,10 @@
     var A = G.actors, p = G.player;
     for (var i = 0; i < A.length; i++) {
       var a = A[i];
-      if (a.deco) continue;
+      if (a.deco || a.ghost) continue;
       for (var j = i + 1; j < A.length; j++) {
         var b = A[j];
+        if (b.ghost) continue;
         if (b.deco) continue;
         var dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), m = a.r + b.r;
         if (d >= m || d < 1e-4) continue;
@@ -1066,7 +1085,7 @@
         } else {
           for (var j = 0; j < G.actors.length; j++) {
             var f = G.actors[j];
-            if (f.follow && Math.hypot(f.x - pr.x, f.y - pr.y) < f.r + 0.12) { hurtFollower(f, pr.dmg); hit = true; break; }
+            if ((f.follow || (f.ghost && !f.hidden)) && Math.hypot(f.x - pr.x, f.y - pr.y) < f.r + 0.12) { hurtFollower(f, pr.dmg); hit = true; break; }
           }
         }
       }
@@ -1088,6 +1107,153 @@
       G.pickups.splice(k, 1);
       if (pk.qid) Quests.onPickup(pk);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rewind: hold G to slip a few seconds back and fight beside your past self
+  // ---------------------------------------------------------------------------
+  // Everything still alive goes back (positions, wounds, attacks, arrows in flight,
+  // people you escort); the dead stay dead, so kills, loot and deeds stay consistent.
+  // You keep your wounds: time flows on for you. Your past self, with the health you had then,
+  // replays exactly what you did, and the enemies who wounded you are still fighting it, so
+  // those wounds land on it (unless this time things go differently). Strain limits it.
+  var REWIND = { min: 2, max: 10, keep: 10.5, snapEvery: 0.1, maxGhosts: 3, strainBase: 12, strainPerSec: 3.5, drain: 5 };
+  G.hist = []; G.trail = []; G.frameEv = {};
+
+  function canRewind() { return G.stage === 'quest' || G.stage === 'won' || G.simMode; }
+  function snapActor(a) {
+    return { id: a.id, x: a.x, y: a.y, hp: a.hp, state: a.state, t: a.t, cd: a.cd, cd2: a.cd2, face: a.face, kbx: a.kbx, kby: a.kby, hitCharge: a.hitCharge, inv: a.inv, flash: 0 };
+  }
+  function recordFrame(dt) {
+    var p = G.player, ev = G.frameEv;
+    G.trail.push({ t: G.wt, x: p.x, y: p.y, face: p.face, walkT: p.walkT, boat: p.boat, rollT: p.rollT, w: G.keys.k ? p.eq.ranged.w : p.eq.melee.w,
+      swing: ev.swing || 0, shot: ev.shot || null, roll: !!ev.roll });
+    while (G.trail.length && G.trail[0].t < G.wt - REWIND.keep) G.trail.shift();
+    G.snapT = (G.snapT || 0) - dt;
+    if (G.snapT <= 0) {
+      G.snapT = REWIND.snapEvery;
+      G.hist.push({
+        t: G.wt, hp: p.hp,
+        actors: G.actors.filter(function (a) { return (a.hostile || a.obj || a.follow) && !a.ghost; }).map(snapActor),
+        proj: G.projectiles.map(function (pr) { return Object.assign({}, pr); })
+      });
+      while (G.hist.length && G.hist[0].t < G.wt - REWIND.keep) G.hist.shift();
+    }
+    p.strain = Math.max(0, (p.strain || 0) - REWIND.drain * dt);
+  }
+  /** How far back you could go right now (seconds). */
+  function rewindAvail() {
+    if (!G.hist.length || !G.trail.length) return 0;
+    return Math.min(REWIND.max, G.wt - Math.max(G.hist[0].t, G.trail[0].t));
+  }
+  function rewindCost(sec) { return Math.round(REWIND.strainBase + REWIND.strainPerSec * sec); }
+  function rewindAmount() {
+    var held = (performance.now() - G.rewindHold.start) / 1000;
+    return Math.max(REWIND.min, Math.min(REWIND.min + held * 6, REWIND.max, rewindAvail()));
+  }
+  function trailAt(t) {
+    var tr = G.trail, lo = 0, hi = tr.length - 1;
+    if (!tr.length) return null;
+    if (t <= tr[0].t) return tr[0];
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (tr[mid].t <= t) lo = mid; else hi = mid - 1; }
+    return tr[lo];
+  }
+  function startRewindHold() {
+    var p = G.player;
+    if (p.dead || G.rewindHold) return;
+    if (!canRewind()) { toast('Only the Chronoscope could do that, and you do not have it yet.'); return; }
+    if (rewindAvail() < REWIND.min) { toast('The glass shows nothing to go back to yet.'); return; }
+    G.rewindHold = { start: performance.now() };
+  }
+  function releaseRewind() {
+    if (!G.rewindHold) return;
+    var sec = rewindAmount();
+    G.rewindHold = null;
+    rewind(sec);
+  }
+  /** Slip back `sec` seconds. Returns true if it happened. */
+  function rewind(sec) {
+    var p = G.player;
+    sec = Math.min(sec, rewindAvail());
+    if (sec < REWIND.min - 0.01) return false;
+    var cost = rewindCost(sec), ghosts = G.actors.filter(function (a) { return a.ghost; });
+    if ((p.strain || 0) + cost > 100) { toast('The Chronoscope burns in your hand. <b>Too much strain</b>: wait for it to cool (' + Math.round(p.strain) + '/100).'); return false; }
+    if (ghosts.length >= REWIND.maxGhosts) { toast('Three of you are already here. The glass will not split again.'); return false; }
+    var t0 = G.wt - sec, snap = null;
+    for (var k = G.hist.length - 1; k >= 0; k--) if (G.hist[k].t <= t0) { snap = G.hist[k]; break; }
+    if (!snap) snap = G.hist[0];
+    t0 = snap.t;
+    // your past self: everything you did from t0 until now
+    var track = G.trail.filter(function (e) { return e.t >= t0; });
+    // restore the living world (the dead stay dead)
+    var byId = {};
+    snap.actors.forEach(function (sa) { byId[sa.id] = sa; });
+    G.actors.forEach(function (a) { var sa = byId[a.id]; if (sa) { for (var key in sa) a[key] = sa[key]; } });
+    G.projectiles = snap.proj.map(function (pr) { return Object.assign({}, pr); });
+    // the world clock turns back; earlier past selves replay from the same moment
+    G.wt = t0;
+    ghosts.forEach(function (gh) { gh.lastT = Math.min(gh.lastT, t0); });
+    // you go back to where you stood; your wounds are yours, and time keeps flowing for you
+    var at = track[0] || trailAt(t0);
+    if (at) { p.x = at.x; p.y = at.y; p.face = at.face; }
+    p.rollT = 0; p.swingT = 0; p.inv = 0.6;
+    G.cam.x = p.x; G.cam.y = p.y;
+    if (track.length > 4) {
+      var gh = spawnAt('ghost', at.x, at.y, { track: track, lastT: t0 - 0.001, prov: provOf(at.x, at.y), name: 'Your past self' });
+      // your past self is you, as you were then: the wounds you took since are about to happen to it
+      gh.maxHp = maxHp(p); gh.hp = snap.hp != null ? snap.hp : p.hp;
+    }
+    p.strain = (p.strain || 0) + cost;
+    G.hist = G.hist.filter(function (h) { return h.t <= t0; });
+    G.trail = G.trail.filter(function (e) { return e.t <= t0; });
+    G.flash = 0.35; G.rewound = 0.6;
+    addEffect({ type: 'ring', x: p.x, y: p.y, life: 0.7, color: '#9fe8ff' });
+    // two of the same stranger, in plain sight
+    var pi = provOf(p.x, p.y);
+    if (Gear.localAge(pi) >= 0) { p.suspicion = Math.min(100, (p.suspicion || 0) + 12); }
+    if (!G.rewindTold) { G.rewindTold = true; toast('The world lurches ' + sec.toFixed(1) + ' seconds back. <b>Your past self</b> fights on beside you, doing exactly what you did. Keep it alive: if it dies, the paradox hurts.', 8000); }
+    return true;
+  }
+  function updateGhost(a, dt) {
+    var local = G.wt, tr = a.track, end = tr[tr.length - 1].t;
+    // the moment your past self lifted the Chronoscope, it is gone, exactly as you were
+    if (local > end) {
+      var last = tr[tr.length - 1], i = G.actors.indexOf(a);
+      if (i >= 0) G.actors.splice(i, 1);
+      a.vanishedAt = local;
+      addEffect({ type: 'ring', x: last.x, y: last.y, life: 0.6, color: '#9fe8ff' });
+      addEffect({ type: 'puff', x: last.x, y: last.y, life: 0.4, color: '#bff3ff' });
+      return;
+    }
+    a.hidden = local < tr[0].t;
+    if (a.hidden) return;
+    a.inv = (a.inv || 0) - dt;
+    // replay every recorded frame between where we were and where we are now
+    var lo = 0, hi = tr.length - 1;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (tr[mid].t <= local) lo = mid; else hi = mid - 1; }
+    var e = tr[lo];
+    a.x = e.x; a.y = e.y; a.face = e.face; a.walkT = e.walkT; a.boat = e.boat; a.w = e.w; a.rollT = e.rollT;
+    for (var k = 0; k < tr.length; k++) {
+      var f = tr[k];
+      if (f.t <= a.lastT) continue;
+      if (f.t > local) break;
+      if (f.swing) { addEffect({ type: 'gslash', x: f.x, y: f.y, ang: f.face, life: 0.18 }); meleeHit(f.x, f.y, f.face, f.swing); }
+      if (f.shot) {
+        var sh = f.shot;
+        G.projectiles.push({ x: f.x + Math.cos(f.face) * 0.4, y: f.y + Math.sin(f.face) * 0.4, vx: sh.vx, vy: sh.vy, dmg: sh.dmg, mine: true, life: sh.life, bullet: sh.bullet, stone: sh.stone });
+        if (sh.bullet) addEffect({ type: 'muzzle', x: f.x + Math.cos(f.face) * 0.7, y: f.y + Math.sin(f.face) * 0.7, life: 0.12 });
+      }
+    }
+    a.lastT = local;
+  }
+  /** Your past self was killed: the paradox snaps back on you. */
+  function paradox(gh) {
+    var p = G.player, hurtBy = Math.round(maxHp(p) * 0.06);
+    p.strain = Math.min(100, (p.strain || 0) + 15);
+    p.hp = Math.max(1, p.hp - hurtBy);
+    G.shake = 0.4; G.flash = 0.25;
+    floatText(p.x, p.y, '-' + hurtBy + ' paradox', '#9ff');
+    toast('<b>Paradox!</b> Your past self falls, and something tears inside you. (−' + hurtBy + ' health, +15 strain)', 6000);
   }
 
   // ---------------------------------------------------------------------------
@@ -1474,6 +1640,24 @@
       ctx.fillStyle = 'rgba(15,18,28,0.85)'; roundRect(tx - tw / 2, ty - 12, tw, 22, 6); ctx.fill();
       ctx.fillStyle = '#ffe9a8'; ctx.textAlign = 'center'; ctx.fillText(label, tx, ty + 4); ctx.textAlign = 'left';
     }
+    if (G.rewindHold) {
+      var amt = rewindAmount(), past = trailAt(G.wt - amt), cost = rewindCost(amt);
+      ctx.fillStyle = 'rgba(90,170,230,0.16)'; ctx.fillRect(0, 0, vw, vh);
+      if (past) {
+        var gx = ox + past.x * TS, gy = oy + past.y * TS;
+        ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(160,240,255,0.8)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ox + p.x * TS, oy + p.y * TS - 12); ctx.lineTo(gx, gy - 12); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(gx, gy - 12, 16, 0, 7); ctx.stroke();
+      }
+      var over = (p.strain || 0) + cost > 100;
+      ctx.font = '700 18px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = over ? '#ff8a8a' : '#bff3ff';
+      ctx.fillText('◀◀  ' + amt.toFixed(1) + ' s', vw / 2, 118);
+      ctx.font = '600 13px system-ui, sans-serif';
+      ctx.fillText(over ? 'Too much strain: the glass will not turn' : 'Release G to slip back · strain +' + cost, vw / 2, 138);
+      ctx.textAlign = 'left';
+    }
+    if (G.rewound > 0) { ctx.fillStyle = 'rgba(120,220,255,' + (G.rewound * 0.35) + ')'; ctx.fillRect(0, 0, vw, vh); G.rewound -= 1 / 60; }
     if (p.hurt > 0) { ctx.fillStyle = 'rgba(200,30,30,' + (p.hurt * 0.6) + ')'; ctx.fillRect(0, 0, vw, vh); }
     if (G.flash > 0) { ctx.fillStyle = 'rgba(190,240,255,' + Math.min(1, G.flash) + ')'; ctx.fillRect(0, 0, vw, vh); G.flash -= 1 / 60; }
     var lowHp = !p.dead && p.hp < maxHp(p) * 0.3;
@@ -1560,6 +1744,7 @@
   }
 
   function drawActor(a, x, y) {
+    if (a.ghost) { if (!a.hidden) drawGhost(a, x, y); return; }
     if (a.deco) {
       if (a.kind === 'ruins') {
         shadow(x, y, 16);
@@ -1666,6 +1851,13 @@
       }
     }
   }
+  function drawGhost(a, x, y) {
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = 'rgba(120,230,255,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 14, 6, 0, 0, 7); ctx.fill();
+    drawHuman(x, y, { face: a.face, walk: a.walkT, r: 0.32, body: '#6fd8f0', head: '#cdeff7', belt: '#9ff', hat: hood('#4fb8d0'), weapon: a.w, boat: a.boat, flash: a.flash > 0 });
+    ctx.globalAlpha = 1;
+    if (a.hp < a.maxHp) { var w = 30, f = Math.max(0, a.hp / a.maxHp); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 16, y - 46, 32, 6); ctx.fillStyle = '#7df0ff'; ctx.fillRect(x - 15, y - 45, w * f, 4); }
+  }
   function hpBar(a, x, y) {
     var w = a.boss ? 60 : 30, f = Math.max(0, a.hp / a.maxHp);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
@@ -1748,6 +1940,9 @@
     } else if (e.type === 'ring') {
       ctx.strokeStyle = e.color; ctx.globalAlpha = 1 - f; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(x, y - 10, 10 + f * 40, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    } else if (e.type === 'gslash') {
+      ctx.strokeStyle = 'rgba(140,240,255,' + (0.8 - f) + ')'; ctx.lineWidth = 5 * (1 - f) + 1;
+      ctx.beginPath(); ctx.arc(x, y - 12, 1.25 * TS * (0.75 + f * 0.25), e.ang - 1.1 + f * 0.6, e.ang + 1.1 * (f * 1.2 - 0.1)); ctx.stroke();
     } else if (e.type === 'muzzle') {
       ctx.fillStyle = 'rgba(255,220,120,' + (1 - f) + ')'; ctx.beginPath(); ctx.arc(x, y - 12, 9 * (1 - f) + 4, 0, 7); ctx.fill();
       ctx.fillStyle = 'rgba(200,200,200,' + (0.5 - f * 0.5) + ')'; ctx.beginPath(); ctx.arc(x + 6, y - 18 - f * 10, 8 + f * 10, 0, 7); ctx.fill();
@@ -1838,6 +2033,10 @@
     $('h-sus').hidden = sus < 1;
     $('h-sus').className = 'sus' + (sus >= Gear.HUNT ? ' hunt' : sus >= Gear.SUSPECT ? ' warn' : '');
     $('h-sus').innerHTML = '<span>Suspicion' + (susL ? ': ' + susL : '') + '</span><div class="bar sb"><div style="width:' + sus + '%"></div></div>';
+    var strain = p.strain || 0;
+    $('h-strain').hidden = strain < 0.5;
+    $('h-strain').className = 'strain' + (strain > 70 ? ' hot' : '');
+    $('h-strain').innerHTML = '<span>Chronoscope strain</span><div class="bar sb"><div style="width:' + strain + '%"></div></div>';
     $('h-year').textContent = 'Year ' + G.year;
     $('h-month').textContent = MONTHS[G.month];
     var pi = provOf(p.x, p.y), c = s.owner[pi], t = s.terrain[pi];
@@ -2168,10 +2367,15 @@
       else if (k === 'l') openPanel('journal');
       else if (k === 'i') openPanel('inv');
       else if (k === 'u') Gear.toggleConceal();
+      else if (k === 'g' && !e.repeat) startRewindHold();
       else if (k === 'h' || k === '?') openPanel('help');
     });
-    window.addEventListener('keyup', function (e) { G.keys[e.key.toLowerCase()] = false; });
-    window.addEventListener('blur', function () { G.keys = {}; });
+    window.addEventListener('keyup', function (e) {
+      var k = e.key.toLowerCase();
+      G.keys[k] = false;
+      if (k === 'g') releaseRewind();
+    });
+    window.addEventListener('blur', function () { G.keys = {}; G.rewindHold = null; });
     $('scope-year').addEventListener('input', function () { scope.year = +this.value; if (!scope.pending) { scope.pending = true; requestAnimationFrame(function () { scope.pending = false; renderScope(); }); } });
     $('scope-chart').addEventListener('mousedown', function (e) {
       var cv = this, set = function (ev) { var r = cv.getBoundingClientRect(); scope.year = clamp(Math.round((ev.clientX - r.left) / r.width * HORIZON), 1, HORIZON - 1); $('scope-year').value = scope.year; renderScope(); };
@@ -2250,7 +2454,8 @@
       if (!G.world.isComplete(G.cur)) G.world.compute(G.cur, 7);
       else if (!G.world.isComplete(G.world.root)) G.world.compute(G.world.root, 5);
       else if (G.oracle && !G.oracle.done) G.oracle.work(4);
-      if (!G.modal && !G.panel) update(dt);
+      if (G.rewindHold && (G.modal || G.panel || G.player.dead)) G.rewindHold = null;
+      if (!G.modal && !G.panel) update(G.rewindHold ? dt * 0.15 : dt);   // the world crawls while you choose how far back
       else G.time += 0; // the world holds still while you read
       storyFrame();
       render();
@@ -2284,7 +2489,7 @@
     stateAt: function (y) { G.echoView = G.echoView || new Timeline.View(G.world); return G.echoView.seek(G.cur, clamp(y, 0, HORIZON - 1)); }, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
     // for testing and debugging from the console
     debug: { travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,
-      step: function (dt) { update(dt); }, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
+      step: function (dt) { update(dt); }, rewind: rewind, rewindAvail: rewindAvail, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
       teleport: function (x, y) { G.player.x = x; G.player.y = y; G.cam.x = x; G.cam.y = y; manageActive(); }, provCenter: provCenter, homeCiv: homeCiv, foeCiv: foeCiv }
   };
   window.addEventListener('DOMContentLoaded', init);
