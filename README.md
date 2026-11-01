@@ -6,6 +6,8 @@ person, with a sword and a bow, take quests from the people you meet, and
 change the course of 3,000 years of simulated history. Then look through the
 Chronoscope, see what your deeds did, and travel to any year to try again.
 
+**Play online:** https://puremunky.github.io/chronoscope-rpg/ (guide: https://puremunky.github.io/chronoscope-rpg/guide.html)
+
 **Play locally:** open `index.html` in a browser (works from `file://`, no build
 step). Played entirely on the keyboard.
 
