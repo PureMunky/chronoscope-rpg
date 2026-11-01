@@ -186,3 +186,8 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 .inv-empty { margin: 6px 10px; font-size: 12px; }
 .gearline.bad { color: var(--red); } .gearline.warnc { color: #ffd08a; }
 .dlg .warn { color: #ffd08a; }
+
+.qline { font-size: 12px; padding: 3px 8px; margin-top: 3px; border-left: 2px solid rgba(255, 255, 255, 0.15); color: var(--muted); }
+.qline.here { color: var(--green); border-color: var(--green); }
+.qline.back { color: var(--cyan); border-color: var(--cyan); }
+#tracker .obj.dormant { opacity: 0.6; }

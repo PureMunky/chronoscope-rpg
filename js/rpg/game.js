@@ -1270,6 +1270,22 @@
     journal('You swear the oath before ' + esc(a.name) + '.');
   }
 
+  /** Is the person a quest must be turned in to still there, in this timeline and year? '' if so. */
+  function giverGone(q) {
+    var parts = (q.returnKey || '').split(':'), role = parts[0], v = +parts[1], s = G.s;
+    if (role === 'elder') {
+      if (s.owner[v] < 0 || s.pop[v] < 15) return 'The village at (' + (v % W) + ', ' + ((v / W) | 0) + ') no longer exists in this timeline';
+      return '';
+    }
+    if (role === 'royal' || role === 'spymaster' || role === 'scholar') return civIdx(v) < 0 ? 'The ' + civName(v) + ' no longer exist in this timeline' : '';
+    return '';
+  }
+  /** Where to turn a quest in: the giver's village, or wherever their realm's capital is now. */
+  function returnPi(q) {
+    var parts = (q.returnKey || '').split(':'), role = parts[0], v = +parts[1];
+    if (role === 'royal' || role === 'spymaster' || role === 'scholar') { var c = civIdx(v); if (c >= 0) return G.s.cCap[c]; }
+    return q.returnPi;
+  }
   function onQuestDone(q) {
     // renown: how much your own people trust you
     var hs = G.home ? String(G.home.sig) : '', key = q.giverKey || '', forHome = key.split(':')[1] === hs;
@@ -1368,7 +1384,8 @@
     var p = G.player;
     if (y === G.year) return;
     var from = G.year;
-    Quests.abandonAll('the age they belonged to is gone', true);
+    G.leftFrom = { year: from };
+    Quests.abandonAll('', true);
     seekYear(y);
     p.suspicion = 0; G.gunWarned = false;
     G.month = 2;
@@ -1844,7 +1861,7 @@
     // tracker
     var objs = objectiveList(), ppi = pi;
     $('tracker').innerHTML = objs.map(function (o) {
-      return '<div class="obj' + (o.main ? ' main' : '') + '"><span class="dot"></span><div><div>' + esc(o.text) + '</div>' + (o.q ? '<div class="qt">' + esc(o.q.title) + '</div>' : '') +
+      return '<div class="obj' + (o.main ? ' main' : '') + (o.dormant ? ' dormant' : '') + '"><span class="dot"></span><div><div>' + esc(o.text) + '</div>' + (o.q ? '<div class="qt">' + esc(o.q.title) + '</div>' : '') +
         (o.pi >= 0 ? '<div class="dir">' + (o.pi === ppi ? 'here' : dirName(o.pi % W - ppi % W, ((o.pi / W) | 0) - ((ppi / W) | 0)) + ' · ' + md(o.pi, ppi) + ' prov') + '</div>' : '') + '</div></div>';
     }).join('');
     $('k-potion').textContent = p.potions;
@@ -2056,6 +2073,17 @@
     h += '<div class="sline ' + (saved(f) ? 'good' : 'bad') + '"><span class="lbl">Your people</span> ' + fateText(f) + '</div>';
     h += '<div class="sline muted"><span class="lbl">Without you</span> ' + fateText(base) + '</div>';
     if (G.goal) h += '<div class="sline"><span class="lbl">Goal</span> hold land in <b>' + G.goal.target + '</b></div>';
+    // your quests across time, and the way back
+    if (G.leftFrom || G.quests.length) {
+      h += '<div class="threads"><div class="lbl">Your quests across time</div>';
+      if (G.leftFrom && G.leftFrom.year !== G.year) h += '<div class="qline back"><b>B</b> back to <b>' + G.leftFrom.year + '</b>, where you left</div>';
+      G.quests.forEach(function (q) {
+        var w = Quests.windowOf(q), here = Quests.inWindow(q);
+        h += '<div class="qline' + (here ? ' here' : '') + '">' + esc(q.title) + ' · <b>' + (w ? w.y0 + (w.y1 !== w.y0 ? '–' + w.y1 : '') : 'any year') + '</b> · ' +
+          (here ? (q.stage === 'return' ? 'ready to turn in, now' : 'now') : (q.stage === 'return' ? 'ready to turn in, travel back' : 'travel back')) + '</div>';
+      });
+      h += '<div class="muted">[ and ] jump between these years; Enter travels.</div></div>';
+    }
     // echoes first: turning points of this timeline you could stand in (they include the Oracle's threads of fate)
     scope.echoes = G.world.isComplete(G.cur) ? Quests.echoes() : [];
     var dif = G.oracle && G.oracle.done ? G.oracle.difficulty() : null;
@@ -2115,9 +2143,12 @@
           if (k === 'pageup') { scope.year = Math.max(1, scope.year - 50); $('scope-year').value = scope.year; renderScope(); }
           if (k === 'pagedown') { scope.year = Math.min(HORIZON - 1, scope.year + 50); $('scope-year').value = scope.year; renderScope(); }
           if (k === 'home') { scope.year = G.year; $('scope-year').value = scope.year; renderScope(); }
+          if (k === 'b' && G.leftFrom) { scope.year = G.leftFrom.year; $('scope-year').value = scope.year; renderScope(); }
           if (k === '[' || k === ']') {
             var ts = G.oracle ? G.oracle.wins().map(function (r) { return r.t; }) : [];
             if (G.goal) ts.push(G.goal.end, G.goal.target);
+            if (G.leftFrom) ts.push(G.leftFrom.year);
+            G.quests.forEach(function (q) { var w = Quests.windowOf(q); if (w) ts.push(w.y0); });
             ts.sort(function (a, b) { return a - b; });
             var nx = k === ']' ? ts.filter(function (t) { return t > scope.year; })[0] : ts.filter(function (t) { return t < scope.year; }).pop();
             if (nx != null) { scope.year = nx; $('scope-year').value = scope.year; renderScope(); }
@@ -2249,6 +2280,7 @@
     spawnAt: spawnAt, spawnNear: spawnNear, spawnPickup: spawnPickup, spawnDeco: spawnDeco, applyDeed: applyDeed, toast: toast,
     journal: journal, passMonths: passMonths, dialog: dialog, provCenter: provCenter,
     curFate: function () { return curFate(); },
+    giverGone: giverGone, returnPi: returnPi,
     stateAt: function (y) { G.echoView = G.echoView || new Timeline.View(G.world); return G.echoView.seek(G.cur, clamp(y, 0, HORIZON - 1)); }, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
     // for testing and debugging from the console
     debug: { travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,

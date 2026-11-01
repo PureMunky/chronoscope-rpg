@@ -512,7 +512,10 @@
     accept(q);
     return q;
   }
-  function inWindow(q) { var y = G().year; return !q.echo || (y >= q.echo.y0 && y <= q.echo.y1); }
+  /** A quest belongs to its years: echoes to the moment they echo, others to when you took them on. */
+  var ERA_SPAN = 12;
+  function windowOf(q) { return q.echo || q.era || null; }
+  function inWindow(q) { var y = G().year, w = windowOf(q); return !w || (y >= w.y0 && y <= w.y1); }
 
   // ---------------------------------------------------------------------------
   // Describing and accepting
@@ -568,6 +571,7 @@
     q.id = nextId++;
     q.stage = 'go';
     q.year = g.year;
+    if (!q.echo) q.era = { y0: g.year, y1: g.year + ERA_SPAN };
     g.quests.push(q);
     R().journal('Quest accepted: <b>' + esc(q.title) + '</b> (from ' + esc(q.giverName) + ').');
     if (q.instant) {
@@ -608,6 +612,11 @@
   function tick() {
     var g = G(), p = g.player, ppi = R().provOf(p.x, p.y);
     g.quests.slice().forEach(function (q) {
+      if (q.stage === 'return' && inWindow(q)) {
+        var gone = R().giverGone(q);
+        if (gone) fail(q, gone);
+        return;
+      }
       if (q.stage !== 'go') return;
       if (q.escort) {
         var es = q.escort;
@@ -623,7 +632,7 @@
         }
         return;
       }
-      if (q.echo && inWindow(q)) {
+      if (windowOf(q) && inWindow(q)) {
         q.enc.forEach(function (e, ei) {
           if (e.done) return;
           if (R().isActive(e.pi) && !e.arrive) spawnEnc(q, e, ei);
@@ -823,22 +832,24 @@
     var g = G();
     for (var k = 0; k < g.quests.length; k++) {
       var q = g.quests[k];
-      if (q.stage === 'return' && q.returnKey === npc.key) { complete(q); return q; }
+      if (q.stage === 'return' && q.returnKey === npc.key && inWindow(q)) { complete(q); return q; }
     }
     return null;
   }
   function waitingOn(npc) {
-    return G().quests.filter(function (q) { return q.returnKey === npc.key || q.giverKey === npc.key; })[0] || null;
+    return G().quests.filter(function (q) { return (q.returnKey === npc.key || q.giverKey === npc.key) && inWindow(q); })[0] || null;
   }
 
   function objectives() {
     var out = [], g = G(), p = g.player, ppi = R().provOf(p.x, p.y);
     g.quests.forEach(function (q) {
-      if (q.echo && !inWindow(q)) {
-        out.push({ q: q, text: 'Travel to ' + q.echo.y0 + (q.echo.y1 !== q.echo.y0 ? '–' + q.echo.y1 : '') + ' (Chronoscope, T)', pi: q.enc[0] ? q.enc[0].pi : -1 });
+      if (!inWindow(q)) {
+        var w = windowOf(q), span = w.y0 + (w.y1 !== w.y0 ? '–' + w.y1 : '');
+        var what = q.echo ? 'Travel to ' + span : q.stage === 'return' ? 'Travel back to ' + span + ' to turn it in to ' + q.returnName : 'Travel back to ' + span + ' to finish it';
+        out.push({ q: q, text: what + ' (T)', pi: q.stage === 'return' ? R().returnPi(q) : q.enc[0] ? q.enc[0].pi : q.escort ? q.escort.to : -1, dormant: true });
         return;
       }
-      if (q.stage === 'return') { out.push({ q: q, text: 'Return to ' + q.returnName, pi: q.returnPi }); return; }
+      if (q.stage === 'return') { out.push({ q: q, text: 'Return to ' + q.returnName, pi: R().returnPi(q) }); return; }
       if (q.escort) {
         var es = q.escort;
         if (es.waiting) out.push({ q: q, text: 'Find ' + es.name, pi: es.from });
@@ -867,11 +878,19 @@
     return out;
   }
 
-  /** Time travel or a new bearer: ordinary quests are forgotten; echoes belong to the Chronoscope and stay. */
-  function abandonAll(why, keepEchoes) {
+  /**
+   * Travelling in time keeps your quests: each waits in its own years. Only an escort already on
+   * the road is lost (the people you were leading stay behind). A new bearer forgets everything.
+   */
+  function abandonAll(why, travelling) {
     var g = G();
-    var keep = g.quests.filter(function (q) { return keepEchoes && q.echo; });
-    g.quests.forEach(function (q) { if (keep.indexOf(q) < 0) R().journal('Quest abandoned: ' + esc(q.title) + (why ? ' (' + why + ')' : '') + '.'); });
+    var keep = g.quests.filter(function (q) { return travelling && !(q.escort && !q.escort.waiting); });
+    g.quests.forEach(function (q) {
+      if (keep.indexOf(q) >= 0) return;
+      var reason = travelling ? 'you left ' + (q.escort.n === 1 ? q.escort.name : 'the exiles') + ' behind in ' + g.year : why;
+      R().journal('Quest abandoned: ' + esc(q.title) + (reason ? ' (' + esc(reason) + ')' : '') + '.');
+      if (travelling) R().toast('<b>' + esc(q.title) + '</b> is lost: ' + esc(reason) + '.', 6000);
+    });
     keep.forEach(function (q) {
       q.enc.forEach(function (e) {
         e.spawned = false; e.relicSpawned = false;
@@ -886,6 +905,6 @@
     DEED_TEXT: DEED_TEXT, offersFor: offersFor, describe: describe, accept: accept, spawnFor: spawnFor, despawned: despawned,
     enterProvince: enterProvince, onKill: onKill, onPickup: onPickup, turnIn: turnIn, waitingOn: waitingOn, objectives: objectives,
     abandonAll: abandonAll, make: make, enc: enc, warband: warband, around: around, owns: owns,
-    tick: tick, echoes: echoes, takeEcho: takeEcho, onFollowerDeath: onFollowerDeath, inWindow: inWindow
+    tick: tick, echoes: echoes, takeEcho: takeEcho, onFollowerDeath: onFollowerDeath, inWindow: inWindow, windowOf: windowOf, ERA_SPAN: ERA_SPAN
   };
 }(this));

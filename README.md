@@ -77,6 +77,16 @@ Chronoscope, then Enter to travel there): the Oracle's **threads of fate**
 foretold fall, and from the chronicle: plagues, sacked capitals, and rivals
 in their cradle. Echo quests stay with you through time travel.
 
+### Quests travel with you
+
+A quest belongs to its years: from when you take it on until 12 years later.
+Travel elsewhere in time and it waits, dormant ("Travel back to 1003–1015 to
+turn it in"); its people only recognise you in those years. The Chronoscope
+lists your quests' years and the year you left (**B** jumps back there; **[ ]**
+cycles through them). If your meddling wipes out the village or realm that
+gave you a quest, it fails when you return. An escort already on the road is
+lost if you leave: the people you were leading stay behind.
+
 ### Your deeds leave marks
 
 Where a deed of yours stands in the current timeline, a **stone marker**
@@ -159,7 +169,7 @@ muster + canal + teaching in 3, both together in 7, and two such campaigns
 WASD move (you face the way you walk) · J sword · K bow (hold to strafe around the
 locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · T Chronoscope · L journal · H help.
 Attacks lock on to the nearest foe in front of you. Dialogs: 1–9 / Enter / Esc.
-Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads of fate, Home, Enter to travel.
+Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where you left, Home, Enter to travel.
 
 ## Files
 
