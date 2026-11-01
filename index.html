@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chronoscope: Wayfarer</title>
+  <meta name="description" content="An action RPG in a deterministic, simulated history. Fight, take quests, and travel in time to save your people.">
+  <link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+  <canvas id="game" aria-label="Game world"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-left panel-glass">
+      <div class="who"><span id="h-name"></span><span id="h-sub"></span></div>
+      <div class="bar hp"><div id="h-hp"></div><span id="h-hpt"></span></div>
+      <div class="bar xp"><div id="h-xp"></div></div>
+      <div class="items" id="h-items"></div>
+    </div>
+    <div class="hud-top panel-glass">
+      <div class="when"><span id="h-year"></span> · <span id="h-month"></span></div>
+      <div class="where" id="h-place"></div>
+      <div class="tl" id="h-timeline"></div>
+    </div>
+    <div class="hud-right">
+      <canvas id="minimap" width="245" height="155" class="panel-glass"></canvas>
+      <div id="fate" class="panel-glass" hidden></div>
+      <div id="tracker"></div>
+    </div>
+    <div class="hotbar panel-glass">
+      <div class="key"><b>J</b>Sword</div>
+      <div class="key"><b>K</b>Bow <i id="k-arrows"></i></div>
+      <div class="key"><b>Space</b>Roll</div>
+      <div class="key"><b>Q</b>Potion <i id="k-potion"></i></div>
+      <div class="key"><b>E</b>Talk</div>
+      <div class="key"><b>R</b>Rest</div>
+      <button class="key btnkey" id="k-scope"><b>T</b>Chronoscope</button>
+      <button class="key btnkey" id="k-journal"><b>L</b>Journal</button>
+      <button class="key btnkey" id="k-help"><b>H</b>Help</button>
+    </div>
+  </div>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <div id="dialog" hidden>
+    <div class="dlg panel-solid" role="dialog" aria-modal="true">
+      <div class="kicker" id="d-kicker"></div>
+      <h2 id="d-title"></h2>
+      <div class="body" id="d-body"></div>
+      <div class="actions" id="d-actions"></div>
+    </div>
+  </div>
+
+  <section id="scope" class="sheet panel-solid" hidden aria-label="The Chronoscope">
+    <header><h2><span class="glyph">⧗</span> The Chronoscope</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
+    <div class="scope-grid">
+      <div class="scope-left">
+        <canvas id="scope-map" width="640" height="400"></canvas>
+        <div class="legend"><span class="sw home"></span>your people <span class="sw foe"></span>their doom <span class="sw sw-thread"></span>threads of fate <span class="sw you"></span>you</div>
+      </div>
+      <div class="scope-text" id="scope-text"></div>
+    </div>
+    <canvas id="scope-chart" width="1000" height="130" title="Your people's provinces over time. Gold: this timeline. Dashed: the world without you. Click to pick a year."></canvas>
+    <div class="scope-controls">
+      <input type="range" id="scope-year" min="1" max="1999" step="1" aria-label="Year to look at">
+      <span id="scope-label"></span>
+      <button class="btn primary" id="scope-go">Travel</button>
+    </div>
+    <p class="hint">Pick a year with , and . (Shift ×10), PgUp/PgDn (±50) or [ ] to jump between threads of fate; Enter travels. Travelling does not age you. Acting in the past rewrites everything after it.</p>
+  </section>
+
+  <section id="journal" class="sheet panel-solid" hidden aria-label="Journal">
+    <header><h2>Journal</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
+    <div id="journal-body"></div>
+  </section>
+
+  <section id="help" class="sheet panel-solid" hidden aria-label="Help">
+    <header><h2>How to play</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
+    <div class="help-grid">
+      <div>
+        <h3>Controls</h3>
+        <table>
+          <tr><td>WASD / arrows</td><td>Move (on water you take a boat)</td></tr>
+          <tr><td>Facing</td><td>You face the way you walk. Attacks lock on to the nearest foe in front of you (gold ring).</td></tr>
+          <tr><td>J</td><td>Sword (hold to keep swinging)</td></tr>
+          <tr><td>K</td><td>Bow (hold to keep firing and strafe around your target)</td></tr>
+          <tr><td>Space / Shift</td><td>Dodge roll (you can't be hit mid-roll)</td></tr>
+          <tr><td>Q</td><td>Drink a potion</td></tr>
+          <tr><td>E</td><td>Talk</td></tr>
+          <tr><td>R</td><td>Rest a season in a village: heal, restock arrows</td></tr>
+          <tr><td>T</td><td>The Chronoscope: see the future, travel in time</td></tr>
+          <tr><td>L</td><td>Journal</td></tr>
+          <tr><td>In dialogs</td><td>1–9 choose · Enter/E accept · Esc decline</td></tr>
+          <tr><td>In the Chronoscope</td><td>, . or ←→ year (Shift ×10) · PgUp/PgDn ±50 · [ ] jump between threads of fate · Home: now · Enter: travel</td></tr>
+        </table>
+        <h3>Fighting</h3>
+        <p>Enemies flash a <b style="color:#ff6b5a">red ring</b> before they strike: roll out of the way. Bosses glare a red line before they charge. Out of combat you slowly recover, faster in a village.</p>
+      </div>
+      <div>
+        <h3>Quests change history</h3>
+        <p>The world is a real simulation: peoples grow, farm, fight, catch plague, rise and fall. Elders (<b style="color:#ffd23c">!</b>) ask for help with what is actually happening around them. Finishing a quest records a <b>deed</b> in the timeline, and the future is re-simulated from that moment:</p>
+        <ul>
+          <li><b>Raider camps</b> → irrigation (richer soil)</li>
+          <li><b>Frontier warbands</b> → rallies (solidarity)</li>
+          <li><b>Moonwort</b> → the plague ends</li>
+          <li><b>Settlers</b> → empty land is settled</li>
+          <li><b>Stolen codex</b> → you learn a people's knowledge; <b>teach</b> it to another</li>
+          <li><b>Granaries</b> → discord in a rival capital</li>
+          <li><b>Regicide</b> → a rival realm's succession crisis</li>
+        </ul>
+        <h3>Time</h3>
+        <p>Walking a province takes about a month; resting takes a season. You age only while living, not while travelling in time. When a bearer dies, the Chronoscope passes to someone young, and every deed still stands.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="title" class="overlay">
+    <div class="title-card panel-solid">
+      <div class="glyph big">⧗</div>
+      <h1>Chronoscope<span>Wayfarer</span></h1>
+      <p class="lede">Three thousand years of history, simulated. One life with a sword and a bow. A brass instrument that lets you go back and try again.</p>
+      <div class="seed-row">
+        <label for="seed">World</label>
+        <input id="seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off">
+        <button class="btn" id="btn-rand" title="Random world">⚄</button>
+        <button class="btn" id="btn-today" title="Today's world">Today</button>
+      </div>
+      <button class="btn primary big" id="btn-begin">Begin</button>
+      <p class="muted small">The world number decides everything: anyone who enters it is born into the same life. Played entirely on the keyboard.</p>
+    </div>
+  </div>
+
+  <div id="loading" class="overlay" hidden>
+    <div class="title-card panel-solid">
+      <div class="glyph big spin">⧗</div>
+      <p id="load-text">History unfolds…</p>
+      <div class="loadbar"><div id="load-bar"></div></div>
+      <p class="muted small">Simulating peoples, wars, plagues and empires up to your birth and beyond.</p>
+    </div>
+  </div>
+
+  <script src="js/engine/sim.js"></script>
+  <script src="js/engine/timeline.js"></script>
+  <script src="js/engine/story.js"></script>
+  <script src="js/engine/oracle.js"></script>
+  <script src="js/rpg/local.js"></script>
+  <script src="js/rpg/quests.js"></script>
+  <script src="js/rpg/game.js"></script>
+</body>
+</html>
