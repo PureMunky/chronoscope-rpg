@@ -9,6 +9,8 @@ Chronoscope, see what your deeds did, and travel to any year to try again.
 **Play locally:** open `index.html` in a browser (works from `file://`, no build
 step). Played entirely on the keyboard.
 
+**How to play:** see the illustrated [player's guide](guide.html).
+
 ## Saving
 
 The game **autosaves** after every deed, finished quest, journey through time,
@@ -249,6 +251,7 @@ Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where y
 
 ```
 index.html, css/game.css
+guide.html, guide/       the player's guide and its screenshots
 js/engine/   sim.js, timeline.js, story.js, oracle.js   (from Chronoscope, unchanged)
 js/rpg/local.js    provinces → walkable tiles, settlements, rendering cache
 js/rpg/quests.js   quest generation, escorts, choices, echoes; quests → deeds

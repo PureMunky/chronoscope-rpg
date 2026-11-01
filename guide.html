@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wayfarer Player's Guide</title>
+  <meta name="description" content="How to play Chronoscope: Wayfarer, an action RPG in a simulated history you can travel through and rewrite.">
+  <style>
+    :root { --ink: #eef1f6; --muted: #9aa3b5; --gold: #ffd23c; --accent: #c9a24a; --cyan: #7df0ff; --red: #ff8a7a; --green: #7dffa0; --bg: #0d121e; --card: #151b2b; --line: rgba(255, 255, 255, 0.1); }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--cyan); }
+    header.hero { padding: 48px 16px 24px; text-align: center; background: radial-gradient(ellipse at 50% 0%, #24304e 0%, var(--bg) 70%); }
+    header.hero .glyph { font-size: 48px; color: var(--accent); }
+    header.hero h1 { font-family: Georgia, serif; font-size: 40px; margin: 4px 0; }
+    header.hero h1 span { display: block; font-size: 15px; letter-spacing: 0.4em; text-transform: uppercase; color: var(--accent); }
+    header.hero p { max-width: 640px; margin: 12px auto 0; color: #cdd3e0; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px 64px; }
+    nav.toc { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin: 8px 0 28px; columns: 2; column-gap: 32px; font-size: 14px; }
+    nav.toc a { display: block; padding: 2px 0; text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    h2 { font-family: Georgia, serif; font-size: 28px; margin: 44px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { color: var(--accent); font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 6px; }
+    figure { margin: 16px 0 20px; }
+    figure img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+    figcaption { font-size: 14px; color: var(--muted); margin-top: 6px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0 16px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px solid #4a5570; border-bottom-width: 2px; border-radius: 5px; background: #1d2436; font: 600 12px/1.5 system-ui, sans-serif; text-align: center; color: var(--ink); }
+    .example { background: rgba(125, 240, 255, 0.06); border-left: 3px solid var(--cyan); border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 15px; }
+    .example b.k { color: var(--cyan); text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; display: block; margin-bottom: 2px; }
+    .tip { background: rgba(255, 210, 60, 0.07); border-left: 3px solid var(--gold); border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 15px; }
+    .warn { background: rgba(255, 138, 122, 0.08); border-left: 3px solid var(--red); border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 15px; }
+    .muted { color: var(--muted); }
+    .pill { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+    .good { color: var(--green); } .bad { color: var(--red); } .gold { color: var(--gold); }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 16px 40px; }
+    @media (max-width: 720px) {
+      nav.toc { columns: 1; }
+      .two { grid-template-columns: 1fr; }
+      header.hero h1 { font-size: 32px; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="glyph">⧗</div>
+    <h1>Chronoscope<span>Wayfarer · Player's Guide</span></h1>
+    <p>Three thousand years of history, simulated. One life with a sword and a bow. A brass instrument that lets you go back and try again. This guide covers everything in the game, with screenshots and real examples from <b>world 1</b>.</p>
+  </header>
+
+  <div class="wrap">
+    <nav class="toc" aria-label="Contents">
+      <a href="#idea">The idea</a>
+      <a href="#start">Starting out</a>
+      <a href="#controls">Controls</a>
+      <a href="#world">Exploring the world</a>
+      <a href="#combat">Fighting</a>
+      <a href="#quests">Quests change history</a>
+      <a href="#story">Your story and the goal</a>
+      <a href="#scope">The Chronoscope</a>
+      <a href="#echoes">Echoes of the timeline</a>
+      <a href="#compare">Watching history change</a>
+      <a href="#marks">Your deeds leave marks</a>
+      <a href="#rewind">Rewinding a fight</a>
+      <a href="#realms">Realms at war</a>
+      <a href="#gear">Gear from other ages</a>
+      <a href="#dress">Clothes and suspicion</a>
+      <a href="#travel">The long road</a>
+      <a href="#time">Time, age and death</a>
+      <a href="#saving">Saving</a>
+      <a href="#tips">Tips</a>
+    </nav>
+
+    <section id="idea">
+      <h2>The idea</h2>
+      <p>The world of Wayfarer is not scripted. Underneath the game runs the Chronoscope simulation: peoples farm, multiply, fight over borders, catch plague, rise into empires and shatter into successor states, year after year, all by a handful of rules. The same world number always produces the same history.</p>
+      <p>You are one person in that history. You can walk it, fight in it, help the people you meet, and, once you carry the Chronoscope, <b>travel to any year and change it</b>. Every quest you finish is recorded as a deed in the timeline, and the future is re-simulated from that moment. Your goal is to save your people from a fall that history says is coming.</p>
+      <figure><img src="guide/title.jpg" alt="The title screen with a world number box and a Begin button" loading="lazy"><figcaption>The title screen. The world number decides everything: anyone who enters <b>1</b> is born into the same life.</figcaption></figure>
+    </section>
+
+    <section id="start">
+      <h2>Starting out</h2>
+      <p>Enter a world number (or press <b>Today</b> for today's world, or ⚄ for a random one) and press <kbd>Enter</kbd>. The game simulates history up to your birth, then introduces you: who you are, which people you belong to, their customs, their neighbours, and what the elders remember, all generated from the real simulation.</p>
+      <figure><img src="guide/prologue.jpg" alt="The prologue dialog: Takakanai, child of the Tharian" loading="lazy"><figcaption>World 1: you are <b>Takakanai</b>, twenty years old, of the <b>Tharian</b>, a Classical Age forest people of 100,000 ruled by King Kanlovo. To the south-west lie the larger, hungrier Jenithriis.</figcaption></figure>
+      <p>Your first task is custom: walk to the capital (follow the gold marker) and swear the oath to your ruler. The ruler sends you to clear raiders near the capital; when you come back, a stranger is waiting for you.</p>
+      <div class="tip">If you have played before, the title screen offers <b>Continue</b> (your latest save) and <b>Load…</b>.</div>
+    </section>
+
+    <section id="controls">
+      <h2>Controls</h2>
+      <p>Wayfarer is played entirely on the keyboard. You face the way you walk; attacks lock on to the nearest foe in front of you (a gold ring marks the target).</p>
+      <table>
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows</td><td>Move (on water you take a boat)</td></tr>
+        <tr><td><kbd>J</kbd></td><td>Melee attack (hold to keep swinging)</td></tr>
+        <tr><td><kbd>K</kbd></td><td>Ranged attack (hold to keep firing and strafe around your target)</td></tr>
+        <tr><td><kbd>Space</kbd> / <kbd>Shift</kbd></td><td>Dodge roll (you cannot be hit mid-roll)</td></tr>
+        <tr><td><kbd>G</kbd> (hold)</td><td>Rewind 2 to 10 seconds and fight beside your past self</td></tr>
+        <tr><td><kbd>Q</kbd></td><td>Drink a potion</td></tr>
+        <tr><td><kbd>E</kbd></td><td>Talk</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Rest a season in a village: heal, restock ammunition, +1 potion</td></tr>
+        <tr><td><kbd>I</kbd></td><td>Inventory</td></tr>
+        <tr><td><kbd>U</kbd></td><td>Conceal everything out of its time (and take it out again)</td></tr>
+        <tr><td><kbd>B</kbd></td><td>Mount or dismount your horse</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Travel map</td></tr>
+        <tr><td><kbd>T</kbd></td><td>The Chronoscope (once you have it)</td></tr>
+        <tr><td><kbd>V</kbd></td><td>Watch your world and the world without you diverge</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Journal</td></tr>
+        <tr><td><kbd>P</kbd> / <kbd>Esc</kbd></td><td>Pause: save, load, return to the title</td></tr>
+        <tr><td><kbd>H</kbd></td><td>Help</td></tr>
+        <tr><td>In dialogs</td><td><kbd>1</kbd>–<kbd>9</kbd> choose, <kbd>Enter</kbd> or <kbd>E</kbd> accept, <kbd>Esc</kbd> decline</td></tr>
+      </table>
+    </section>
+
+    <section id="world">
+      <h2>Exploring the world</h2>
+      <p>Every province of the simulated map is a walkable area: villages whose size follows their real population, fields, forests, rivers you can ford, roads between provinces, castles in capitals, and dashed borders in each realm's colour. When history changes, the land changes with it.</p>
+      <figure><img src="guide/explore.jpg" alt="A Tharian village with houses, fields, villagers and an elder marked with an exclamation point" loading="lazy"><figcaption>A Tharian forest village. Elders with a gold <b class="gold">!</b> have work for you; a cyan <b style="color:#7df0ff">?</b> means someone is waiting for you to turn a quest in.</figcaption></figure>
+      <h3>The screen</h3>
+      <ul>
+        <li><b>Top left</b>: your name, age, level, health and experience; ammunition, potions and silver; what you wield and wear; suspicion and Chronoscope strain when they matter.</li>
+        <li><b>Top centre</b>: the year and season; where you are; how that realm stands with your people (<span class="good">your people</span>, <span class="bad">at war with your people</span>, uneasy neighbours…); which timeline you are in.</li>
+        <li><b>Top right</b>: a minimap of the provinces around you, your people's fate in this timeline, and your objectives with directions.</li>
+        <li><b>Bottom</b>: the hotbar of keys.</li>
+      </ul>
+    </section>
+
+    <section id="combat">
+      <h2>Fighting</h2>
+      <p>Enemies telegraph their attacks: a <b class="bad">red ring</b> flashes around them just before they strike, and bosses glare a red line before they charge. Roll out of the way. Out of combat you slowly recover, faster in a village.</p>
+      <figure><img src="guide/combat.jpg" alt="The player fighting a warband of soldiers, a shieldbearer, a bowman and a captain" loading="lazy"><figcaption>A Jenithriis warband: soldiers, a bowman, a <b>shieldbearer</b> and a captain. Damage numbers float up; health bars show who is hurt.</figcaption></figure>
+      <h3>What you will meet</h3>
+      <table>
+        <tr><th>Foe</th><th>Notes</th></tr>
+        <tr><td>Wolves, jackals, bears, plague rats</td><td>The wild, and plagued villages</td></tr>
+        <tr><td>Bandits, archers, raider chiefs</td><td>Camps in hungry or divided lands</td></tr>
+        <tr><td>Soldiers, bowmen, captains</td><td>Realms at war (see <a href="#realms">Realms at war</a>); stronger in later ages</td></tr>
+        <tr><td>Shieldbearers</td><td>Block blows from the front unless they are swinging: flank them, or hit them as they attack</td></tr>
+        <tr><td>Named elites</td><td>"Rutaeth the Cruel", "Quickblade": tougher, with a trait (swift, brutal, stalwart); they drop the gear of their age</td></tr>
+        <tr><td>Royal guards and rulers</td><td>Boss fights in rival capitals</td></tr>
+        <tr><td>Great beasts</td><td>Named monsters ("the Pale Hunter") that call their pack when wounded</td></tr>
+      </table>
+      <div class="example"><b class="k">How hard is it?</b>The game was balanced with a bot that plays like novice, average and skilled players. A raider camp costs a level-1 novice about half their health. A rival king with his royal guard kills almost every level-1 player, but a level-5 player wins with about one potion.</div>
+    </section>
+
+    <section id="quests">
+      <h2>Quests change history</h2>
+      <p>Quests come from what is really happening around the person who gives them: plague next door, an empty valley, a hostile border, unrest, a rival's capital. Each offer tells you exactly what history will record if you succeed, the reward, and a danger rating with a recommended level.</p>
+      <figure><img src="guide/quest-offer.jpg" alt="An elder's quest offer: The hunt for the Pale Hunter" loading="lazy"><figcaption>An elder asks you to kill <b>the Pale Hunter</b>, a beast in the wild country three provinces away. If you succeed, "the land heals": a real intervention that makes the soil rich, so people can settle there. At level 1 the danger line is red: this will likely kill you.</figcaption></figure>
+      <table>
+        <tr><th>Quest</th><th>How it plays</th><th>What history records</th></tr>
+        <tr><td>Raider camp</td><td>Clear a camp</td><td>Irrigation: richer soil</td></tr>
+        <tr><td>Riders on the frontier</td><td>Break an enemy warband</td><td>Rallies: solidarity on the border</td></tr>
+        <tr><td>Siege</td><td>Hold a village against three waves</td><td>Rallies</td></tr>
+        <tr><td>Moonwort for the sick</td><td>Gather herbs among plague rats</td><td>The plague ends</td></tr>
+        <tr><td>Settlers</td><td>Defend a camp in empty land</td><td>The land is settled</td></tr>
+        <tr><td>The exiles' road</td><td>Escort exiles far into empty country</td><td><b>A new people is founded</b></td></tr>
+        <tr><td>The holy wanderer</td><td>Escort a prophet to the capital alive</td><td>Solidarity surges across a region</td></tr>
+        <tr><td>Great beast hunt</td><td>Kill a named beast</td><td>The land blooms</td></tr>
+        <tr><td>The rising</td><td><b>Choose a side</b>: help rebels or crush them</td><td>A new people, or a rally</td></tr>
+        <tr><td>Ruins and tablets</td><td>Defeat tomb wardens, take the tablets</td><td>Lost knowledge: a realm leaps ahead</td></tr>
+        <tr><td>Stolen codex / Teach</td><td>Recover a codex, then teach another people</td><td>You learn; they learn</td></tr>
+        <tr><td>Granaries (spymaster)</td><td>Burn granaries in the rival capital</td><td>Discord</td></tr>
+        <tr><td>Salt their fields (spymaster)</td><td>Break storehouses in their farmland</td><td>Salted earth for generations</td></tr>
+        <tr><td>Poisoned wells (spymaster)</td><td>Foul two wells in their capital</td><td>Plague (and it may spread to you)</td></tr>
+        <tr><td>Death of the ruler (spymaster)</td><td>Royal guard and a boss ruler</td><td>A realm-wide succession crisis</td></tr>
+      </table>
+      <p><b>Renown.</b> Quests for your own people earn renown. The spymaster's darker work opens up as you earn it: salting fields at renown 2, poisoned wells at 3, regicide at 4.</p>
+    </section>
+
+    <section id="story">
+      <h2>Your story and the goal</h2>
+      <p>After your trial, a stranger in grey gives you the Chronoscope and shows you your people's fall: the year it happens, who does it, and why. Your goal is that your people <b>still hold land 50 years after their foretold fall</b>. The ruler's spymaster and scholar now have work for you in the capital.</p>
+      <div class="example"><b class="k">World 1</b>The Tharian fall in <b>1127</b>, conquered by the Jenithriis: "Their solidarity held; they were simply outmatched." To win, they must still hold land in <b>1177</b>. Killing the Jenithriis King Garvoravi in his own hall in the year 1000 threw his realm into a succession crisis (solidarity 39.7% → 27.0%), and the Tharian now last until <b>1229</b>. The quest is won.</div>
+    </section>
+
+    <section id="scope">
+      <h2>The Chronoscope</h2>
+      <p>Press <kbd>T</kbd> to look through it. You see the world at any year, your people's size over time in this timeline against the world without you, how and why they fall, and the moments that matter. Pick a year and press <kbd>Enter</kbd> to travel there. <b>Travelling does not age you; living does.</b></p>
+      <figure><img src="guide/chronoscope.jpg" alt="The Chronoscope panel with a world map, fate summary, echoes and a history chart" loading="lazy"><figcaption>The Chronoscope in world 1: your people outlined in gold, their doom in red; the fate in this timeline and without you; echoes you can take up; and the chart of your people's provinces (gold) against the world without you (dashed).</figcaption></figure>
+      <table>
+        <tr><th>Key</th><th>In the Chronoscope</th></tr>
+        <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Step a year (Shift: 10)</td></tr>
+        <tr><td><kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>Jump 50 years</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Jump between threads of fate and your quests' years</td></tr>
+        <tr><td><kbd>B</kbd></td><td>Back to the year you left</td></tr>
+        <tr><td><kbd>Home</kbd></td><td>Now</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>Take up an echo</td></tr>
+        <tr><td><kbd>V</kbd> / <kbd>Space</kbd></td><td>Compare histories / play</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Travel to the chosen year</td></tr>
+      </table>
+      <p>The instrument also <b>hums</b> (top right, under your people's fate) when you are in an era that matters, louder near a moment where a single deed would turn fate, and it <b>sings</b> when you stand exactly there and then.</p>
+    </section>
+
+    <section id="echoes">
+      <h2>Echoes of the timeline</h2>
+      <p>The Chronoscope reads turning points out of <i>your</i> timeline and offers them as quests that can only be done in their own years:</p>
+      <ul>
+        <li><b>◈ Threads of fate</b>: the exact deeds, times and places the Chronoscope has found that would save your people (it replays history to check).</li>
+        <li><b>Border wars</b> your people are about to lose, at the border where the first blow falls.</li>
+        <li><b>The last stand</b>: the walls of your capital in the years before the fall.</li>
+        <li>From the chronicle: plagues, sacked capitals, and rival realms in their cradle.</li>
+      </ul>
+      <p>Press the echo's number, then <kbd>Enter</kbd> to travel to its years. Echo quests stay with you as you move through time.</p>
+      <div class="example"><b class="k">World 1</b>"◈ Thread of fate, 1007: kill the ruler of the Jenithriis at (100, 54) between 1005 and 1010. The Chronoscope is certain: done then and there, your people survive."</div>
+    </section>
+
+    <section id="compare">
+      <h2>Watching history change</h2>
+      <p>Press <kbd>V</kbd> (anywhere, or in the Chronoscope) to see <b>the world without you</b> beside <b>your world</b>, playing forward from your latest deed. Provinces ruled by someone else than in the other history are marked in white, and a summary says what is different in the year shown.</p>
+      <figure><img src="guide/compare.jpg" alt="Two world maps side by side, with a summary of differences in 1160" loading="lazy"><figcaption>World 1, the year 1160, after killing King Garvoravi in 1000. In your world the Tharian (gold, right) hold 176 provinces; in the world without you they are gone.</figcaption></figure>
+    </section>
+
+    <section id="marks">
+      <h2>Your deeds leave marks</h2>
+      <p>Where a deed of yours still stands in the current timeline, a <b>stone marker</b> records it: who, what and when. It weathers as the years pass. Villagers and elders nearby tell the legend, differently a few years later, a lifetime later, or centuries on ("The old songs tell of Takakanai, who…"). Undo the deed by changing the past and the marker and the stories are gone.</p>
+      <figure><img src="guide/marker.jpg" alt="A stone marker dialog in the Jenithriis capital: Here a king fell, in the year 1000, by Takakanai" loading="lazy"><figcaption>Forty years later, in the Jenithriis capital: "Here a king fell, in the year 1000, by Takakanai. Lichen is starting on the letters."</figcaption></figure>
+    </section>
+
+    <section id="rewind">
+      <h2>Rewinding a fight</h2>
+      <p>Once you carry the Chronoscope, hold <kbd>G</kbd>. The world slows to a crawl while you choose how far back to slip, from 2 to 10 seconds (the longer you hold, the further); release to go.</p>
+      <div class="two">
+        <figure><img src="guide/rewind-hold.jpg" alt="Holding G: the screen tints blue and shows the rewind length and strain cost" loading="lazy"><figcaption>Holding <kbd>G</kbd>: how far back, and what it will cost in strain.</figcaption></figure>
+        <figure><img src="guide/rewind-ghost.jpg" alt="The player and a translucent past self fighting a captain" loading="lazy"><figcaption>Your <b>past self</b> (translucent) fights beside you, repeating exactly what you did.</figcaption></figure>
+      </div>
+      <ul>
+        <li><b>Everything still alive goes back</b>: positions, wounds, attacks, arrows in flight, the people you escort. The dead stay dead.</li>
+        <li><b>You keep your wounds.</b> Time flows on for you; nothing magic heals you. Your past self has the health you had then, and the enemies who wounded you are still fighting <i>it</i>, so those wounds land on your past self, unless this time things go differently.</li>
+        <li>Your past self <b>vanishes at the exact moment and place you used the Chronoscope</b>. Rewind again and there can be three of you.</li>
+        <li><b>Strain</b> limits it (shown under your health); it cools over time. If enemies kill your past self, the <b>paradox</b> hurts you. Rewinding in front of townsfolk feeds suspicion.</li>
+      </ul>
+      <div class="example"><b class="k">Does it help?</b>Against a king and his guard, an average level-3 player wins 43% of the time without rewinding and 86% with it. At level 1 it still mostly kills you.</div>
+    </section>
+
+    <section id="realms">
+      <h2>Realms at war</h2>
+      <p>Who is at war comes from the simulation's own records for the year you are in: realms that took land from each other in the last 20 years (or are massing to) are <b>at war</b>; others are <b>kin</b> (split from each other or from the same parent), <b>friendly</b> (a common enemy), <b>uneasy</b> neighbours, or at peace. Rewrite history and the wars move.</p>
+      <figure><img src="guide/war-front.jpg" alt="Tharian and Jenithriis soldiers fighting at a border village" loading="lazy"><figcaption>World 1, 1060: the Jenithriis are taking Tharian land. On the border their soldiers (orange) clash with the Tharian (yellow), whether or not you are there. Villagers flee.</figcaption></figure>
+      <ul>
+        <li>A realm's soldiers attack you on sight <b>only if your people are at war with them</b>. Patrols of realms at peace with yours leave you alone.</li>
+        <li><b>Standing.</b> Each realm remembers you. Strike a neutral soldier and their comrades turn on you; killing a realm's soldiers sours it; killing invaders on a realm's land warms it. At −30 a realm treats you as an enemy whatever its wars; at +30, as a friend.</li>
+        <li>Your own people's soldiers fight beside you, and a stroke aimed at your enemies never catches the neutral soldiers beside them.</li>
+      </ul>
+      <figure><img src="guide/journal.jpg" alt="The journal with quests, deeds, realms and the chronicle of your lives" loading="lazy"><figcaption>The journal (<kbd>L</kbd>): your quests, the deeds of this timeline, the realms that matter with your standing, renown, and the chronicle of your lives.</figcaption></figure>
+    </section>
+
+    <section id="gear">
+      <h2>Gear from other ages</h2>
+      <p>Every weapon, armour, piece of clothing and kind of ammunition belongs to an age of the simulation. Later ages make stronger gear, so you can travel to the future, buy a gun, and bring it back.</p>
+      <table>
+        <tr><th>Age</th><th>Melee</th><th>Ranged (ammunition)</th><th>Armour</th></tr>
+        <tr><td>Stone</td><td>Stone club</td><td>Sling (stones)</td><td>Hides</td></tr>
+        <tr><td>Bronze</td><td>Bronze sword</td><td>Hunting bow (arrows)</td><td>Bronze scale</td></tr>
+        <tr><td>Iron</td><td>Iron sword</td><td>Recurve bow (arrows)</td><td>Iron mail</td></tr>
+        <tr><td>Classical</td><td>Steel gladius</td><td>Composite bow (arrows)</td><td>Lorica</td></tr>
+        <tr><td>Medieval</td><td>Longsword</td><td>Crossbow (bolts)</td><td>Plate armour</td></tr>
+        <tr><td>Renaissance</td><td>Rapier</td><td>Arquebus (shot)</td><td>Breastplate</td></tr>
+        <tr><td>Industrial</td><td>Cavalry sabre</td><td>Rifle (cartridges)</td><td>Greatcoat</td></tr>
+      </table>
+      <div class="two">
+        <figure><img src="guide/market.jpg" alt="The Tharian forge and market dialog" loading="lazy"><figcaption><b>Smiths' markets</b> (capitals and some large towns) sell the gear, clothes, horses and ammunition of their own age, and buy what you bring.</figcaption></figure>
+        <figure><img src="guide/inventory.jpg" alt="The inventory screen with slots, pack and how each item reads here" loading="lazy"><figcaption>The <b>inventory</b> (<kbd>I</kbd>): every slot and your pack, and how each item reads <i>here</i>. ↑↓ choose, Enter wield / wear / stow, X drop.</figcaption></figure>
+      </div>
+      <ul>
+        <li><b>Ammunition is era-locked.</b> Resting or a smith only restocks what the local age can make: nobody in the Middle Ages makes cartridges.</li>
+        <li><b>Selling the future.</b> Sell a far-future item to a smith and their people take it apart: a real knowledge deed for their whole realm.</li>
+      </ul>
+      <div class="example"><b class="k">World 1</b>In 1900 a Renaissance smith of the Kahois sells an arquebus. Back in 1000, among the Classical-age Tharian, suspicion reaches 40 in four seconds; one shot sends it to the top and three witch-hunters come. Sold to the Tharian smith instead, the arquebus raises their whole realm's knowledge from 3,067 to 3,867.</div>
+    </section>
+
+    <section id="dress">
+      <h2>Clothes and suspicion</h2>
+      <h3>Suspicion</h3>
+      <p>Wielding gear two or more ages ahead of the people around you, or any gun among people who have never seen one, raises <b>suspicion</b>; a gunshot raises it sharply. At <i>whispers</i>, elders, rulers and smiths will not deal with you and nobody gives you a bed. At <i>witch hunt</i>, witch-hunters come for you. Out in the wilds, no one sees anything.</p>
+      <figure><img src="guide/witch-hunt.jpg" alt="Witch-hunters closing in after a gunshot in a Classical capital" loading="lazy"><figcaption>"The thunder of your arquebus echoes off the houses. Shutters slam." Then: "Witch! Sorcerer!"</figcaption></figure>
+      <p>Press <kbd>U</kbd> to <b>conceal</b> everything out of its time in one go, and <kbd>U</kbd> again to take it out. While it is hidden you lose that attack or defence: bare fists, nothing to shoot, plain clothes. Single items can be stowed from the inventory.</p>
+      <h3>Clothes</h3>
+      <p>Clothes belong to an age and a people (a "Tharian toga and sandals", a "Kahois ruffled doublet"). No one attacks you over them, but people react:</p>
+      <table>
+        <tr><th>You look</th><th>When</th><th>Effect</th></tr>
+        <tr><td><span class="good">fits in</span></td><td>Local dress of about the right age</td><td>Normal prices and pay</td></tr>
+        <tr><td>foreign</td><td>Another people's dress</td><td>Prices +15%, pay −15%</td></tr>
+        <tr><td><span class="bad">strange</span></td><td>Two ages off</td><td>Villagers walk away; some elders refuse you; prices ×1.5; quests pay half</td></tr>
+        <tr><td><span class="bad">outlandish</span></td><td>Four ages off</td><td>Ordinary people will not talk to you; prices ×2</td></tr>
+      </table>
+      <div class="tip">A smith who does not like how you look will still sell you the local clothes, at a markup: "Get yourself decent clothes first, then we'll talk."</div>
+    </section>
+
+    <section id="travel">
+      <h2>The long road</h2>
+      <p>Press <kbd>M</kbd> for the travel map. Move the cursor anywhere, or press <kbd>1</kbd>–<kbd>9</kbd> for your capital, quest targets and where you were born, then <kbd>Enter</kbd> to set out. The road costs <b>months of your life</b>: a province a month on foot, two on horseback, four months more for a sea passage. You arrive older, in the season you would really have arrived. Escorts travel with you; you cannot leave with enemies on your heels.</p>
+      <figure><img src="guide/travel-map.jpg" alt="The travel map with a destination cursor, numbered places and the cost of the road" loading="lazy"><figcaption>The travel map: the destination, the realm you would be walking into, the road in months, and when and how old you will arrive.</figcaption></figure>
+      <p><b>Horses</b> are sold at markets from the Bronze Age on. Press <kbd>B</kbd> to mount and dismount: riding is faster, covers twice the ground per month of your life, and fighting puts you back on your feet.</p>
+      <div class="example"><b class="k">Example</b>Twelve provinces away: 12 months on foot, 6 on horseback.</div>
+    </section>
+
+    <section id="time">
+      <h2>Time, age and death</h2>
+      <ul>
+        <li>Walking a province takes about a month; resting takes a season; the long road takes months. You age only by living, never by travelling in time.</li>
+        <li><b>Quests travel with you.</b> A quest belongs to its years (from when you take it until 12 years later). Leave and it waits ("Travel back to 1000–1012 to turn it in"); the Chronoscope lists its years, and <kbd>B</kbd> in the Chronoscope jumps back to where you left. If your meddling wipes out the village that gave it, it fails.</li>
+        <li><b>The Chronoscope passes on.</b> When you die, or grow old, it passes to someone young nearby, born among their own people with their own gear and clothes. Every deed still stands, and the instrument keeps something of your strength: the new bearer starts at your level.</li>
+      </ul>
+    </section>
+
+    <section id="saving">
+      <h2>Saving</h2>
+      <p>The game <b>autosaves</b> after every deed, finished quest, journey through time, new year and passing of the Chronoscope, and every 90 seconds. Press <kbd>P</kbd> (or <kbd>Esc</kbd>) to pause, save to one of three slots, load, or return to the title, where <b>Continue</b> picks up your latest save.</p>
+      <figure><img src="guide/pause.jpg" alt="The pause menu with save slots" loading="lazy"><figcaption>The pause menu. A save is a few kilobytes: it stores your deeds and replays them, so the whole of history comes back exactly.</figcaption></figure>
+      <p class="muted">Saves live in your browser's local storage, so they belong to the browser you play in.</p>
+    </section>
+
+    <section id="tips">
+      <h2>Tips</h2>
+      <ul>
+        <li><b>Read the "why".</b> The Chronoscope tells you whether your people are conquered or collapse from within. Against a conqueror, weaken them (granaries, salt, regicide) or strengthen your people before the war; against collapse, rally and unite them (prophets, sieges held, plagues healed).</li>
+        <li><b>Follow the threads.</b> Echoes marked ◈ are deeds the Chronoscope has verified would save your people. They are the shortest road to victory, and usually the most dangerous.</li>
+        <li><b>Earn renown early.</b> Camps, frontiers and beasts for your own people level you up and unlock the spymaster's harder work.</li>
+        <li><b>Use rewind when a fight turns</b>, not after it is lost: your past self takes the wounds you already took, and you get a second sword.</li>
+        <li><b>Dress for the age.</b> Buy local clothes when you arrive somewhere new in time; it is cheap and opens every door.</li>
+        <li><b>Bring the future home carefully.</b> A gun is devastating, but ammunition is scarce in the past and people are watching. Conceal it in towns (<kbd>U</kbd>), use it in the wilds, or sell it to a smith and change their history.</li>
+        <li><b>Watch what you did.</b> After any big deed, press <kbd>V</kbd> and see the two histories pull apart.</li>
+      </ul>
+    </section>
+  </div>
+  <footer>Chronoscope: Wayfarer · built on the deterministic history engine of <a href="https://github.com/PureMunky/chronoscope">Chronoscope</a> · <a href="index.html">Play</a></footer>
+</body>
+</html>
