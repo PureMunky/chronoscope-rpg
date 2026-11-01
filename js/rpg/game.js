@@ -244,6 +244,7 @@
     refreshActive();
     reassessHostility();
     yearEvents();
+    autosave();
     if (p.hp > maxHp(p)) p.hp = maxHp(p);
     if (p.age >= p.deathAge && !p.dead) passOn('old');
   }
@@ -326,6 +327,7 @@
     journal('<b>' + DEED_NAMES[type] + '</b> at (' + x + ', ' + y + ') in ' + G.year + '. ' + msg);
     G.fateWatch = { prev: prev };
     G.oracle = null;
+    autosave();
     return true;
   }
 
@@ -374,7 +376,7 @@
       else if (f.end < prev.end) msg = 'The Chronoscope shudders. The ' + n + ' now fall in <b>' + f.end + '</b>, ' + (prev.end - f.end) + ' years <i>sooner</i>.';
       else msg = 'History bends back toward its course: the ' + n + ' still fall in ' + f.end + '.';
     } else msg = fateText(f);
-    toast(msg, 9000);
+    toast(msg + ' <span class="muted">(Press <b>V</b> to watch the two histories diverge.)</span>', 9000);
     journal(msg);
   }
 
@@ -850,9 +852,20 @@
     });
     return best;
   }
+  function dismount() { var p = G.player; if (p.mounted) { p.mounted = false; addEffect({ type: 'puff', x: p.x, y: p.y, life: 0.3, color: '#a88a6a' }); } }
+  function toggleMount() {
+    var p = G.player;
+    if (p.dead) return;
+    if (!p.horse) { toast('You have no horse. Markets in the Bronze Age or later sell them.'); return; }
+    if (p.mounted) { dismount(); return; }
+    if (L.isWaterAt(G.s, p.x, p.y)) { toast('Not in a boat.'); return; }
+    p.mounted = true;
+    if (!G.rideTold) { G.rideTold = true; toast('You swing into the saddle. Faster, and every month on the road covers twice the ground. (Fighting puts you back on your feet.)', 6000); }
+  }
   function swordAttack() {
     var p = G.player;
     if (p.swingCd > 0 || p.rollT > 0 || p.dead) return;
+    dismount();
     var st = swordTarget();
     if (st) p.face = Math.atan2(st.y - p.y, st.x - p.x);
     p.swingT = 0.2; p.swingCd = 0.38;
@@ -877,6 +890,7 @@
     var p = G.player;
     if (p.bowCd > 0 || p.rollT > 0 || p.dead) return;
     var rw = p.eq.ranged;
+    dismount();
     if (rw.none) { if (G.time - (G.noArrowT || -9) > 2) { toast('You have nothing to shoot with. (U or I to take out a weapon.)'); G.noArrowT = G.time; } p.bowCd = 0.4; return; }
     var am = Gear.AMMO[rw.ammo];
     if (Gear.ammoOf(p) <= 0) {
@@ -953,6 +967,7 @@
   function roll() {
     var p = G.player;
     if (p.rollCd > 0 || p.dead) return;
+    dismount();
     var ix = p.inX || 0, iy = p.inY || 0;
     if (!ix && !iy) { ix = Math.cos(p.face); iy = Math.sin(p.face); }
     var l = Math.hypot(ix, iy);
@@ -1014,6 +1029,7 @@
       '<p>It finds <b>' + esc(name) + '</b>, twenty years old, ' + (c >= 0 ? 'of the <b>' + esc(civName(sig)) + '</b>.</p><p>' + Story.peopleSketch(s, c) : 'a wanderer.') + '</p>' +
       '<p>Every deed of the earlier bearers still stands. The instrument keeps something of their strength, too: you begin at <b>level ' + p.level + '</b>. Their unfinished quests are forgotten.</p>',
       buttons: [{ label: 'Take it up' }] });
+    autosave();
   }
 
   // ---------------------------------------------------------------------------
@@ -1060,7 +1076,8 @@
       p.rollT -= dt;
       move(p, p.rollX * 10.5 * dt, p.rollY * 10.5 * dt, false);
     } else if (l) {
-      var sp = 4.5 * L.speedAt(G.s, p.x, p.y) * (p.hp < maxHp(p) * 0.25 ? 0.85 : 1) * (p.swingT > 0 ? 0.6 : 1);
+      if (p.mounted && L.isWaterAt(G.s, p.x + ix * 0.6, p.y + iy * 0.6)) { p.mounted = false; toast('You lead your horse aboard a boat.'); }
+      var sp = 4.5 * L.speedAt(G.s, p.x, p.y) * (p.mounted ? 1.8 : 1) * (p.hp < maxHp(p) * 0.25 ? 0.85 : 1) * (p.swingT > 0 ? 0.6 : 1);
       move(p, ix * sp * dt, iy * sp * dt, false);
     }
     var dist = Math.hypot(p.x - ox, p.y - oy);
@@ -1068,7 +1085,7 @@
     p.moving = dist > 0.001;
     if (p.moving) p.walkT += dist * 3;
     p.boat = L.isWaterAt(G.s, p.x, p.y);
-    p.distAcc += dist;
+    p.distAcc += p.mounted ? dist / 2 : dist;       // a horse covers twice the ground in a month of your life
     while (p.distAcc >= TILES_PER_MONTH) { p.distAcc -= TILES_PER_MONTH; passMonths(1); }
     // aim: you face the way you move; holding the bow keeps your aim on its target so you can strafe
     G.target = bowTarget();
@@ -1631,6 +1648,7 @@
     return q.returnPi;
   }
   function onQuestDone(q) {
+    setTimeout(autosave, 0);
     // renown: how much your own people trust you
     var hs = G.home ? String(G.home.sig) : '', key = q.giverKey || '', forHome = key.split(':')[1] === hs;
     if (key.indexOf('elder:') === 0) { var hc = homeCiv(), epi = +key.split(':')[1]; forHome = hc >= 0 && G.s.owner[epi] === hc; }
@@ -1740,6 +1758,7 @@
     addEffect({ type: 'ring', x: p.x, y: p.y, life: 1.2, color: '#9fe8ff' });
     G.flash = 0.8;
     journal('You travel from ' + from + ' to the year ' + y + '.');
+    autosave();
     toast('The glass clears. It is the year <b>' + y + '</b>.' + (y < from ? ' Whatever you do now will rewrite everything after it.' : ''), 6000);
   }
 
@@ -2029,6 +2048,17 @@
       }
     }
   }
+  function drawHorse(x, y, face, walk) {
+    var flip = Math.cos(face) < 0 ? -1 : 1, b = Math.sin(walk * 2) * 1.5;
+    shadow(x, y + 2, 20);
+    ctx.save(); ctx.translate(x, y - 4); ctx.scale(flip, 1);
+    ctx.fillStyle = '#6a4a2e';
+    for (var k = 0; k < 4; k++) { var lg = Math.sin(walk * 2 + k * 1.6) * 3; ctx.fillRect(-12 + k * 7 + lg, 2, 3, 9); }
+    ctx.fillStyle = '#7a5434'; ctx.beginPath(); ctx.ellipse(0, -2 + b * 0.3, 16, 8, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(10, -6); ctx.lineTo(18, -16); ctx.lineTo(24, -14); ctx.lineTo(17, -3); ctx.fill();
+    ctx.fillStyle = '#3a2618'; ctx.fillRect(12, -15, 6, 3); ctx.fillRect(-18, -4, 4, 9);
+    ctx.restore();
+  }
   function drawGhost(a, x, y) {
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = 'rgba(120,230,255,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 14, 6, 0, 0, 7); ctx.fill();
@@ -2043,6 +2073,7 @@
   }
 
   function drawPlayer(p, x, y) {
+    if (p.mounted) drawHorse(x, y, p.face, p.walkT);
     var cl = p.eq.clothes, body = cl && cl.sig ? L.civCSS(cl.sig, 1, cl.age >= 4 ? -25 : 10) : '#2f7f8f';
     var o = { face: p.face, walk: p.walkT, r: 0.32, body: body, belt: cl && cl.age >= 5 ? '#2a2a2a' : '#c8a050', boat: p.boat, hat: cl && cl.age >= 4 ? null : hood(cl && cl.age <= 1 ? '#6a4a2a' : '#1f5f6f'), flash: p.inv > 0 && p.hurt > 0 && Math.sin(G.time * 40) > 0 };
     if (cl && cl.age >= 5) o.hat = function (hx, hy, r) { ctx.fillStyle = '#222'; ctx.fillRect(hx - r * 0.7, hy - r * 0.55, r * 1.4, 3); ctx.fillRect(hx - r * 0.42, hy - r * 1.25, r * 0.84, r * 0.75); };
@@ -2305,16 +2336,17 @@
   }
   function closeDialog() { $('dialog').hidden = true; G.modal = null; }
 
-  function openPanel(id) {
+  function openPanel(id, opts) {
     closePanels();
     G.panel = id;
     $(id).hidden = false;
     G.keys = {};
-    if (id === 'scope') openScope();
+    if (id === 'scope') openScope(opts);
     if (id === 'journal') renderJournal();
     if (id === 'inv') { G.invSel = 0; renderInv(); }
+    if (id === 'travel') openTravel();
   }
-  function closePanels() { ['scope', 'journal', 'help', 'inv'].forEach(function (id) { $(id).hidden = true; }); G.panel = null; }
+  function closePanels() { ['scope', 'journal', 'help', 'inv', 'travel'].forEach(function (id) { $(id).hidden = true; }); G.panel = null; }
   function renderInv() {
     var r = Gear.renderInventory(G.invSel);
     G.invSel = r.sel;
@@ -2365,10 +2397,14 @@
   }
 
   // ---- The Chronoscope ----
-  var scope = { year: START, view: null, pending: false };
+  var scope = { year: START, view: null, rootView: null, pending: false, compare: false, playing: false, playTo: 0 };
   function scopeUnlocked() { return G.stage === 'quest' || G.stage === 'won'; }
-  function openScope() {
-    scope.year = G.year;
+  function openScope(opts) {
+    opts = opts || {};
+    scope.year = opts.year != null ? clamp(opts.year, 1, HORIZON - 1) : G.year;
+    scope.compare = !!opts.compare;
+    scope.playing = !!opts.play;
+    scope.playTo = opts.playTo || Math.min(HORIZON - 1, (G.goal ? G.goal.target : G.year + 150) + 30);
     var r = $('scope-year');
     r.min = 1; r.max = HORIZON - 1; r.value = scope.year;
     renderScope();
@@ -2378,9 +2414,176 @@
     $('scope-label').textContent = 'Year ' + scope.year + (scope.year === G.year ? ' (now)' : scope.year < G.year ? ' (' + (G.year - scope.year) + ' years ago)' : ' (' + (scope.year - G.year) + ' years ahead)');
     $('scope-go').textContent = scope.year === G.year ? 'You are here' : 'Travel to ' + scope.year;
     $('scope-go').disabled = scope.year === G.year;
-    drawScopeMap();
+    $('scope-map').hidden = scope.compare;
+    $('scope-cmp').hidden = !scope.compare;
+    $('scope-legend').hidden = scope.compare;
+    if (scope.compare) drawCompare(); else drawScopeMap();
     drawScopeChart();
     renderScopeText();
+  }
+
+  // ---- Travel: the long road, paid for in months of your life ----
+  var trav = { x: 0, y: 0, mass: null, massVer: -1 };
+  /** Landmasses (provinces joined by land), to know when the road needs a sea passage. */
+  function landmass() {
+    if (trav.massVer === G.ver && trav.mass) return trav.mass;
+    var s = G.s, m = new Int32Array(N).fill(-1), id = 0, q = new Int32Array(N);
+    for (var i = 0; i < N; i++) {
+      if (m[i] >= 0 || !Sim.isLand(s.terrain[i])) continue;
+      var h = 0, t = 0; q[t++] = i; m[i] = id;
+      while (h < t) { var c = q[h++]; for (var d = 0; d < 4; d++) { var n = NB[c * 4 + d]; if (n >= 0 && m[n] < 0 && Sim.isLand(s.terrain[n])) { m[n] = id; q[t++] = n; } } }
+      id++;
+    }
+    trav.mass = m; trav.massVer = G.ver;
+    return m;
+  }
+  function travelCost(to) {
+    var p = G.player, from = provOf(p.x, p.y), dist = md(from, to), m = landmass();
+    var sea = m[from] < 0 || m[to] !== m[from];
+    var months = Math.max(1, Math.ceil(dist / (p.horse ? 2 : 1))) + (sea ? 4 : 0);
+    return { dist: dist, months: months, sea: sea };
+  }
+  function travelDests() {
+    var out = [], seen = {}, hc = homeCiv(), ppi = provOf(G.player.x, G.player.y);
+    function add(pi, label) { if (pi < 0 || seen[pi] || pi === ppi) return; seen[pi] = 1; out.push({ pi: pi, label: label }); }
+    if (hc >= 0) add(G.s.cCap[hc], 'Capital of the ' + civName(G.s.cSig[hc]));
+    objectiveList().forEach(function (o) { if (o.pi >= 0) add(o.pi, o.text); });
+    if (G.home) add(G.home.birth, 'Where you were born');
+    return out.slice(0, 9);
+  }
+  function openTravel() {
+    var ppi = provOf(G.player.x, G.player.y);
+    trav.x = ppi % W; trav.y = (ppi / W) | 0;
+    renderTravel();
+  }
+  function renderTravel() {
+    var cv = $('travel-map'), sc = 4, s = G.s, hs = G.home ? G.home.sig : 0;
+    paintWorld(cv, s, null, hs);
+    var g = cv.getContext('2d'), p = G.player, ppi = provOf(p.x, p.y), dests = travelDests();
+    g.font = '700 11px system-ui, sans-serif';
+    dests.forEach(function (d, i) {
+      var x = (d.pi % W) * sc + 2, y = ((d.pi / W) | 0) * sc + 2;
+      g.fillStyle = '#7df0ff'; g.strokeStyle = '#000'; g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); g.stroke();
+      g.fillStyle = '#fff'; g.fillText(String(i + 1), x + 5, y - 3);
+    });
+    G.deeds.forEach(function (d) { if (G.cur.interventions.indexOf(d.iv) < 0) return; g.fillStyle = 'rgba(255,220,120,0.9)'; g.fillRect((d.pi % W) * sc + 1, ((d.pi / W) | 0) * sc + 1, 2, 2); });
+    g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(p.x / P * sc, p.y / P * sc, 4, 0, 7); g.fill(); g.stroke();
+    var to = trav.y * W + trav.x, cx = trav.x * sc + 2, cy = trav.y * sc + 2;
+    g.strokeStyle = '#ffd23c'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(cx - 9, cy); g.lineTo(cx - 4, cy); g.moveTo(cx + 4, cy); g.lineTo(cx + 9, cy); g.moveTo(cx, cy - 9); g.lineTo(cx, cy - 4); g.moveTo(cx, cy + 4); g.lineTo(cx, cy + 9); g.stroke();
+    g.setLineDash([3, 3]); g.strokeStyle = 'rgba(255,210,60,0.6)'; g.beginPath(); g.moveTo(p.x / P * sc, p.y / P * sc); g.lineTo(cx, cy); g.stroke(); g.setLineDash([]);
+    // info
+    var c = s.owner[to], land = Sim.isLand(s.terrain[to]), h = '';
+    h += '<div class="sline"><span class="lbl">Destination</span> ' + (land ? (c >= 0 ? (s.pop[to] > 0 ? 'a village of the ' : 'lands of the ') + esc(civName(s.cSig[c])) : 'wilderness') + ' · ' + Sim.TERRAIN_NAMES[s.terrain[to]] : 'the sea') + ' (' + trav.x + ', ' + trav.y + ')</div>';
+    if (c >= 0 && G.home && s.cSig[c] !== G.home.sig) h += '<div class="sline ' + (hostileToPlayer(s.cSig[c]) ? 'bad' : '') + '"><span class="lbl">Realm</span> ' + esc(REL_TEXT[relation(G.home.sig, s.cSig[c])] || '') + ' your people' + (hostileToPlayer(s.cSig[c]) ? ': their soldiers will attack you' : '') + '</div>';
+    if (land && to !== ppi) {
+      var cost = travelCost(to), y = G.year, mo = G.month + cost.months;
+      y += Math.floor(mo / 12); mo = mo % 12;
+      h += '<div class="sline"><span class="lbl">The road</span> ' + cost.dist + ' provinces ' + (p.horse ? 'on horseback' : 'on foot') + (cost.sea ? ', with a sea passage' : '') + ': <b>' + cost.months + ' month' + (cost.months > 1 ? 's' : '') + '</b> of your life</div>';
+      h += '<div class="sline"><span class="lbl">Arrive</span> ' + MONTHS[mo] + ' of ' + Math.min(y, HORIZON - 1) + ', aged ' + (G.player.age + Math.floor((G.month + cost.months) / 12)) + '</div>';
+    }
+    h += '<div class="lbl" style="margin-top:8px">Places</div>' + dests.map(function (d, i) {
+      var cc = travelCost(d.pi);
+      return '<button class="thread dest" data-pi="' + d.pi + '"><span class="kk">' + (i + 1) + '</span> ' + esc(d.label) + ' <span class="muted">· ' + cc.months + ' mo</span></button>';
+    }).join('');
+    h += '<p class="muted small">↑↓←→ / WASD move (Shift ×5) · 1–9 jump to a place · Enter set out · M or Esc close.' + (p.horse ? '' : ' A horse halves the time.') + '</p>';
+    $('travel-text').innerHTML = h;
+    Array.prototype.forEach.call($('travel-text').querySelectorAll('.dest'), function (b) {
+      b.onclick = function () { var pi = +b.getAttribute('data-pi'); trav.x = pi % W; trav.y = (pi / W) | 0; renderTravel(); };
+    });
+  }
+  function journey() {
+    var p = G.player, to = trav.y * W + trav.x, s = G.s;
+    if (!Sim.isLand(s.terrain[to])) { toast('You cannot settle down in the middle of the sea.'); return; }
+    if (to === provOf(p.x, p.y)) { closePanels(); return; }
+    if (G.actors.some(function (a) { return a.hostile && a.state !== 'idle' && a.state !== 'return' && Math.hypot(a.x - p.x, a.y - p.y) < 12; })) { toast('Not with enemies on your heels.'); return; }
+    var cost = travelCost(to), fl = G.actors.filter(function (a) { return a.follow; });
+    closePanels();
+    passMonths(cost.months);
+    if (p.dead || G.player !== p) return;        // the road was long enough to end a life
+    var f = findFree(to, C + 1, C + 1) || provCenter(to);
+    p.x = f.x; p.y = f.y; G.cam.x = p.x; G.cam.y = p.y;
+    G.actors = G.actors.filter(function (a) { return a.follow; });
+    fl.forEach(function (a, i) { a.x = p.x + (i - 1) * 0.9; a.y = p.y + 1; a.prov = to; });
+    G.pickups = []; G.projectiles = []; G.hist = []; G.trail = [];
+    for (var key in G.active) Quests.despawned(+key);
+    G.active = {}; G.lastProv = -1;
+    manageActive();
+    G.flash = 0.3;
+    toast('After ' + cost.months + ' month' + (cost.months > 1 ? 's' : '') + ' on the road' + (cost.sea ? ' and a sea passage' : '') + ', you arrive. It is ' + MONTHS[G.month] + ' of ' + G.year + '.', 6000);
+    autosave();
+  }
+
+  // ---- Compare: the world without you beside your world ----
+  var TER_RGB2 = [[29, 58, 92], [44, 90, 132], [125, 150, 86], [79, 116, 72], [138, 124, 88], [154, 150, 142], [205, 184, 134]];
+  function paintWorld(cv, s, other, hs) {
+    var g = cv.getContext('2d'), img = g.createImageData(W, H), d = img.data;
+    for (var i = 0; i < N; i++) {
+      var c = s.owner[i], rgb = c >= 0 ? L.civRGB(s.cSig[c]) : TER_RGB2[s.terrain[i]];
+      var diff = other && (c >= 0 ? s.cSig[c] : 0) !== (other.owner[i] >= 0 ? other.cSig[other.owner[i]] : 0);
+      if (c >= 0 && s.cSig[c] !== hs && !diff) rgb = [rgb[0] * 0.55 + 45, rgb[1] * 0.55 + 45, rgb[2] * 0.55 + 45];
+      d[i * 4] = rgb[0]; d[i * 4 + 1] = rgb[1]; d[i * 4 + 2] = rgb[2]; d[i * 4 + 3] = 255;
+    }
+    var tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H;
+    tmp.getContext('2d').putImageData(img, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(tmp, 0, 0, cv.width, cv.height);
+    var sc = cv.width / W;
+    // your people outlined in gold; provinces ruled differently in the other history outlined in white
+    for (var j = 0; j < N; j++) {
+      var cj = s.owner[j], x = (j % W) * sc, y = ((j / W) | 0) * sc;
+      if (cj >= 0 && s.cSig[cj] === hs) {
+        for (var k = 0; k < 4; k++) {
+          var n = NB[j * 4 + k];
+          if (n >= 0 && s.owner[n] === cj) continue;
+          g.fillStyle = '#ffd23c';
+          if (k === 0) g.fillRect(x, y, sc, 1); if (k === 1) g.fillRect(x + sc - 1, y, 1, sc); if (k === 2) g.fillRect(x, y + sc - 1, sc, 1); if (k === 3) g.fillRect(x, y, 1, sc);
+        }
+      }
+      if (other && Sim.isLand(s.terrain[j]) && (cj >= 0 ? s.cSig[cj] : 0) !== (other.owner[j] >= 0 ? other.cSig[other.owner[j]] : 0)) {
+        g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(x + sc * 0.3, y + sc * 0.3, sc * 0.4, sc * 0.4);
+      }
+    }
+  }
+  function drawCompare() {
+    if (!scope.rootView) scope.rootView = new Timeline.View(G.world);
+    var a = scope.rootView.seek(G.world.root, scope.year), b = scope.view.seek(G.cur, scope.year), hs = G.home.sig;
+    paintWorld($('cmp-a'), a, null, hs);
+    paintWorld($('cmp-b'), b, a, hs);
+    $('cmp-sum').innerHTML = compareSummary(a, b);
+  }
+  function realmList(s) {
+    var out = {};
+    for (var c = 0; c < s.g[1]; c++) if (s.cAlive[c] && s.sTiles[c] >= 3) out[s.cSig[c]] = { tiles: s.sTiles[c], pop: s.sPop[c] };
+    return out;
+  }
+  /** What is different at scope.year between the world without you (a) and yours (b). */
+  function compareSummary(a, b) {
+    var imp = Timeline.impact(a, b), ra = realmList(a), rb = realmList(b), hs = G.home.sig, popA = 0, popB = 0;
+    for (var i = 0; i < N; i++) { popA += a.pop[i]; popB += b.pop[i]; }
+    var onlyB = Object.keys(rb).filter(function (k) { return !ra[k]; }).sort(function (x, y) { return rb[y].tiles - rb[x].tiles; });
+    var onlyA = Object.keys(ra).filter(function (k) { return !rb[k]; }).sort(function (x, y) { return ra[y].tiles - ra[x].tiles; });
+    var mine = rb[hs], theirs = ra[hs];
+    function names(list, src) { return list.slice(0, 4).map(function (k) { return '<b>' + esc(civName(+k)) + '</b> (' + src[k].tiles + ')'; }).join(', ') + (list.length > 4 ? ' and ' + (list.length - 4) + ' more' : ''); }
+    var h = '<div class="cmp-year">In ' + scope.year + '</div>';
+    h += '<div><span class="lbl">Your people</span> ' + (mine ? mine.tiles + ' provinces, ' + fmtPop(mine.pop) + ' people' : '<span class="bad">gone</span>') + ' · without you: ' + (theirs ? theirs.tiles + ' provinces' : '<span class="bad">gone</span>') + '</div>';
+    var differ = 0;
+    for (var j = 0; j < N; j++) if (Sim.isLand(b.terrain[j]) && (a.owner[j] >= 0 ? a.cSig[a.owner[j]] : 0) !== (b.owner[j] >= 0 ? b.cSig[b.owner[j]] : 0)) differ++;
+    h += '<div><span class="lbl">Lands</span> ' + differ + ' provinces ruled by someone else (' + Math.round(imp.owners * 100) + '% of the world)</div>';
+    h += '<div><span class="lbl">People</span> ' + fmtPop(popB) + ' alive, ' + (popB >= popA ? '<span class="good">' + fmtPop(popB - popA) + ' more</span>' : '<span class="bad">' + fmtPop(popA - popB) + ' fewer</span>') + ' than without you</div>';
+    if (onlyB.length) h += '<div><span class="lbl">Only in yours</span> ' + names(onlyB, rb) + '</div>';
+    if (onlyA.length) h += '<div><span class="lbl">Never were</span> ' + names(onlyA, ra) + '</div>';
+    return h;
+  }
+  function scopeTick() {
+    if (G.panel !== 'scope' || !scope.playing) return;
+    scope.frameN = (scope.frameN || 0) + 1;
+    if (scope.frameN % 2) return;
+    scope.year = Math.min(scope.playTo, scope.year + 1);
+    $('scope-year').value = scope.year;
+    renderScope();
+    if (scope.year >= scope.playTo) scope.playing = false;
   }
   function drawScopeMap() {
     var cv = $('scope-map'), g = cv.getContext('2d'), sc = 4;
@@ -2519,7 +2722,8 @@
     window.addEventListener('keydown', function (e) {
       var k = e.key.toLowerCase();
       if (e.target && (e.target.tagName === 'INPUT' && e.target.type === 'text')) return;
-      if (G.stage === 'title' || G.stage === 'loading') return;
+      if (G.stage === 'loading') return;
+      if (G.stage === 'title' && !G.modal) return;
       if (G.modal) {
         if (e.repeat) return;
         var btns = $('d-actions').querySelectorAll('button');
@@ -2530,6 +2734,19 @@
       }
       if (G.panel) {
         if (k === 'escape' || (k === 't' && G.panel === 'scope') || (k === 'l' && G.panel === 'journal') || (k === 'h' && G.panel === 'help') || (k === 'i' && G.panel === 'inv')) { closePanels(); return; }
+        if (G.panel === 'travel') {
+          e.preventDefault();
+          if (k === 'm') { closePanels(); return; }
+          var st = e.shiftKey ? 5 : 1;
+          if (k === 'arrowup' || k === 'w') trav.y = clamp(trav.y - st, 0, H - 1);
+          else if (k === 'arrowdown' || k === 's') trav.y = clamp(trav.y + st, 0, H - 1);
+          else if (k === 'arrowleft' || k === 'a') trav.x = clamp(trav.x - st, 0, W - 1);
+          else if (k === 'arrowright' || k === 'd') trav.x = clamp(trav.x + st, 0, W - 1);
+          else if (/^[1-9]$/.test(k)) { var dd = travelDests()[+k - 1]; if (dd) { trav.x = dd.pi % W; trav.y = (dd.pi / W) | 0; } }
+          else if (k === 'enter' || k === 'e') { journey(); return; }
+          renderTravel();
+          return;
+        }
         if (G.panel === 'inv') {
           e.preventDefault();
           if (k === 'arrowup' || k === 'w') { G.invSel--; renderInv(); }
@@ -2546,6 +2763,8 @@
           if (k === 'pageup') { scope.year = Math.max(1, scope.year - 50); $('scope-year').value = scope.year; renderScope(); }
           if (k === 'pagedown') { scope.year = Math.min(HORIZON - 1, scope.year + 50); $('scope-year').value = scope.year; renderScope(); }
           if (k === 'home') { scope.year = G.year; $('scope-year').value = scope.year; renderScope(); }
+          if (k === 'v') { scope.compare = !scope.compare; renderScope(); }
+          if (k === ' ') { e.preventDefault(); if (!scope.compare) scope.compare = true; scope.playing = !scope.playing; if (scope.playing && scope.year >= scope.playTo) scope.year = Math.max(1, G.year); renderScope(); }
           if (k === 'b' && G.leftFrom) { scope.year = G.leftFrom.year; $('scope-year').value = scope.year; renderScope(); }
           if (k === '[' || k === ']') {
             var ts = G.oracle ? G.oracle.wins().map(function (r) { return r.t; }) : [];
@@ -2572,6 +2791,13 @@
       else if (k === 'i') openPanel('inv');
       else if (k === 'u') Gear.toggleConceal();
       else if (k === 'g' && !e.repeat) startRewindHold();
+      else if (k === 'p' || k === 'escape') pauseMenu();
+      else if (k === 'b') toggleMount();
+      else if (k === 'm') openPanel('travel');
+      else if (k === 'v') {
+        if (!scopeUnlocked()) toast('You do not have the Chronoscope yet.');
+        else { var from = G.deeds.length ? G.deeds[G.deeds.length - 1].year : G.year; openPanel('scope', { year: Math.max(1, from - 5), compare: true, play: true }); }
+      }
       else if (k === 'h' || k === '?') openPanel('help');
     });
     window.addEventListener('keyup', function (e) {
@@ -2598,6 +2824,101 @@
   // ---------------------------------------------------------------------------
   // Title, loading, the beginning of the story
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Saving and loading
+  // ---------------------------------------------------------------------------
+  // A timeline is only (world number, deeds), so a save stores the deeds and replays them:
+  // the whole of history comes back exactly. The rest is you, your quests and what realms think of you.
+  var SAVE_KEY = 'chronoscope-wayfarer:saves', SAVE_VERSION = 1, SLOTS = ['auto', '1', '2', '3'];
+  function readSaves() { try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function writeSaves(all) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(all)); return true; } catch (e) { return false; } }
+  function latestSave() {
+    var all = readSaves(), best = null;
+    SLOTS.forEach(function (k) { if (all[k] && (!best || all[k].savedAt > best.data.savedAt)) best = { slot: k, data: all[k] }; });
+    return best;
+  }
+  function saveLabel(d) {
+    var m = d.meta, ago = Math.round((Date.now() - d.savedAt) / 60000);
+    return m.name + ' of the ' + m.realm + ' · year ' + m.year + ' · level ' + m.level + (m.lives > 1 ? ' · bearer #' + m.lives : '') + ' · world ' + d.seed +
+      ' (' + (ago < 1 ? 'just now' : ago < 60 ? ago + ' min ago' : ago < 1440 ? Math.round(ago / 60) + ' h ago' : Math.round(ago / 1440) + ' d ago') + ')';
+  }
+  function snapshotGame() {
+    var p = G.player, ivs = G.cur.interventions;
+    var pl = {};
+    ['name', 'x', 'y', 'face', 'hp', 'level', 'xp', 'potions', 'silver', 'age', 'deathAge', 'lives', 'knowledge', 'eq', 'pack', 'concealed', 'ammo', 'distAcc', 'horse'].forEach(function (k) { pl[k] = p[k]; });
+    return {
+      v: SAVE_VERSION, savedAt: Date.now(), seed: G.world.seed,
+      meta: { name: p.name, lives: p.lives, level: p.level, year: G.year, realm: G.home ? G.home.name : '', deeds: ivs.length, stage: G.stage },
+      timeline: { name: G.cur.name, ivs: ivs.map(function (iv) { return { t: iv.t, type: iv.type, x: iv.x, y: iv.y, v: iv.v || 0, note: iv.note || '' }; }) },
+      year: G.year, month: G.month, stage: G.stage, home: G.home,
+      goal: G.goal ? { end: G.goal.end, target: G.goal.target, foeSig: G.goal.foeSig } : null,
+      renown: G.renown, standing: G.standing, leftFrom: G.leftFrom || null, echoesDone: G.echoesDone || [], taughtBy: G.taughtBy || {},
+      branchNames: G.branchNames, questsDone: G.questsDone, log: G.log.slice(-200),
+      deeds: G.deeds.map(function (d) { var o = {}; for (var k in d) if (k !== 'iv') o[k] = d[k]; o.ivIndex = ivs.indexOf(d.iv); return o; }),
+      quests: Quests.exportState(), player: pl
+    };
+  }
+  function saveGame(slot, quiet) {
+    if (!G.player || !G.home || G.stage === 'title' || G.stage === 'loading') return false;
+    var all = readSaves(), data;
+    try { data = snapshotGame(); } catch (e) { if (!quiet) toast('Could not save: ' + esc(e.message)); return false; }
+    all[slot] = data;
+    var ok = writeSaves(all);
+    if (!quiet) toast(ok ? 'Saved to ' + (slot === 'auto' ? 'the autosave' : 'slot ' + slot) + '.' : '<b>Could not save</b>: your browser refused local storage.');
+    G.lastSaveT = G.time;
+    return ok;
+  }
+  function autosave() { if (G.time - (G.lastAutoT || -999) > 8) { G.lastAutoT = G.time; saveGame('auto', true); } }
+
+  /** Load: rebuild the world, replay your deeds into it, then put you back. */
+  function loadGame(data) {
+    closeDialog(); closePanels();
+    startWorld(data.seed);
+    G.pending = data;
+    if (data.timeline.ivs.length) {
+      var b = G.world._newBranch(G.world.root, 0, data.timeline.ivs.map(function (iv) { var o = { t: iv.t, type: iv.type, x: iv.x, y: iv.y }; if (iv.v) o.v = iv.v; if (iv.note) o.note = iv.note; return o; }));
+      b.name = data.timeline.name;
+      G.cur = b;
+    }
+  }
+  function finishLoad() {
+    var d = G.pending, p;
+    G.pending = null;
+    seekYear(d.year);
+    G.month = d.month; G.stage = d.stage; G.home = d.home; G.goal = d.goal; G.renown = d.renown || 0; G.standing = d.standing || {};
+    G.leftFrom = d.leftFrom; G.echoesDone = d.echoesDone || []; G.taughtBy = d.taughtBy || {}; G.branchNames = d.branchNames || {};
+    G.questsDone = d.questsDone || []; G.log = d.log || [];
+    G.deeds = (d.deeds || []).map(function (x) { var o = {}; for (var k in x) if (k !== 'ivIndex') o[k] = x[k]; o.iv = x.ivIndex >= 0 ? G.cur.interventions[x.ivIndex] : null; return o; });
+    p = newPlayer(d.player.name, d.player.level, d.player.lives);
+    for (var k in d.player) p[k] = d.player[k];
+    p.dead = false; p.suspicion = 0; p.strain = 0;
+    G.player = p;
+    G.cam.x = p.x; G.cam.y = p.y;
+    resetActors();
+    Quests.importState(d.quests || { quests: [] });
+    $('loading').hidden = true;
+    $('hud').hidden = false;
+    toast('Welcome back, <b>' + esc(p.name) + '</b>. It is ' + MONTHS[G.month] + ' of the year ' + G.year + '.', 6000);
+  }
+
+  function pauseMenu() {
+    var all = readSaves();
+    var btns = [];
+    ['1', '2', '3'].forEach(function (k) { btns.push({ label: 'Save to slot ' + k + (all[k] ? ' (overwrite)' : ''), fn: function () { saveGame(k); } }); });
+    btns.push({ label: 'Load…', fn: function () { loadMenu(true); } });
+    btns.push({ label: 'Return to the title (autosaves)', fn: function () { saveGame('auto', true); location.reload(); } });
+    btns.push({ label: 'Resume' });
+    dialog({ kicker: 'Paused', title: 'The world holds its breath', html:
+      SLOTS.map(function (k) { return '<p class="muted"><b>' + (k === 'auto' ? 'Autosave' : 'Slot ' + k) + '</b>: ' + (all[k] ? esc(saveLabel(all[k])) : 'empty') + '</p>'; }).join('') +
+      '<p class="muted">The game autosaves after every deed, quest, journey through time and new year.</p>', buttons: btns });
+  }
+  function loadMenu(inGame) {
+    var all = readSaves(), btns = [];
+    SLOTS.forEach(function (k) { if (all[k]) btns.push({ label: (k === 'auto' ? 'Autosave' : 'Slot ' + k) + ': ' + saveLabel(all[k]), fn: function () { loadGame(all[k]); } }); });
+    btns.push({ label: inGame ? 'Back' : 'Cancel', fn: inGame ? pauseMenu : null });
+    dialog({ kicker: 'Load', title: btns.length > 1 ? 'Which life?' : 'No saved games yet', html: '', buttons: btns });
+  }
+
   function todaySeed() { var d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
   function startWorld(seed) {
     seed = seed >>> 0;
@@ -2613,6 +2934,18 @@
   }
   function loadingFrame() {
     var target = START + 600;
+    if (G.pending) {
+      // the world without you first, then your timeline up to the year you were in
+      var need = G.pending.year + 1, rootDone = G.world.root.computedTo >= target;
+      if (!rootDone) G.world.compute(G.world.root, 40);
+      else if (G.cur !== G.world.root) G.world.compute(G.cur, 40);
+      var done = rootDone && (G.cur === G.world.root || G.cur.computedTo >= need);
+      var prog = (Math.min(G.world.root.computedTo, target) + (G.cur === G.world.root ? need : Math.min(G.cur.computedTo, need))) / (target + need);
+      $('load-bar').style.width = Math.min(100, 100 * prog) + '%';
+      $('load-text').textContent = !rootDone ? 'The world without you… year ' + G.world.root.computedTo : 'Your deeds ripple through history… year ' + G.cur.computedTo;
+      if (done) finishLoad();
+      return;
+    }
     G.world.compute(G.world.root, 40);
     $('load-bar').style.width = Math.min(100, 100 * G.world.root.computedTo / target) + '%';
     $('load-text').textContent = 'History unfolds… year ' + G.world.root.computedTo;
@@ -2663,6 +2996,8 @@
       else G.time += 0; // the world holds still while you read
       storyFrame();
       render();
+      if (G.time - (G.lastAutoT || 0) > 90 && !G.modal) autosave();
+      scopeTick();
       G.hudT -= dt;
       if (G.hudT <= 0) { hud(); G.hudT = 0.12; if (G.panel === 'scope' && !G.world.isComplete(G.cur)) renderScopeText(); }
     }
@@ -2680,7 +3015,14 @@
     $('btn-rand').onclick = function () { $('seed').value = String(1 + Math.floor(Math.random() * 99999)); };
     $('btn-today').onclick = function () { $('seed').value = String(todaySeed()); };
     $('seed').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-begin').click(); });
-    $('seed').focus();
+    var last = latestSave();
+    if (last) {
+      $('save-row').hidden = false;
+      $('btn-continue').innerHTML = 'Continue<span>' + esc(saveLabel(last.data)) + '</span>';
+      $('btn-continue').onclick = function () { loadGame(last.data); };
+      $('btn-load').onclick = function () { loadMenu(false); };
+      $('btn-continue').focus();
+    } else $('seed').focus();
     requestAnimationFrame(frame);
   }
 
@@ -2692,7 +3034,7 @@
     giverGone: giverGone, returnPi: returnPi,
     stateAt: function (y) { G.echoView = G.echoView || new Timeline.View(G.world); return G.echoView.seek(G.cur, clamp(y, 0, HORIZON - 1)); }, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
     // for testing and debugging from the console
-    debug: { travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,
+    debug: { travelCost: travelCost, landmass: landmass, saveGame: saveGame, readSaves: readSaves, loadGame: loadGame, snapshotGame: snapshotGame, travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,
       step: function (dt) { update(dt); }, rewind: rewind, rewindAvail: rewindAvail, relation: relation, standingOf: standingOf, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
       teleport: function (x, y) { G.player.x = x; G.player.y = y; G.cam.x = x; G.cam.y = y; manageActive(); }, provCenter: provCenter, homeCiv: homeCiv, foeCiv: foeCiv }
   };

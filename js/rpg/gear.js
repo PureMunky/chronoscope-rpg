@@ -241,6 +241,15 @@
       var cost = Math.round(price(it) * dr.price);
       btns.push({ label: 'Buy ' + it.name + ' (' + cost + ' silver)', fn: function () { buy(npc, it, cost); } });
     });
+    if (la >= 1 && !p.horse) {
+      var hp = Math.round((50 + 12 * la) * dr.price);
+      btns.push({ label: 'Buy a horse (' + hp + ' silver)', fn: function () {
+        if (p.silver < hp) { R().toast('Not enough silver.'); smithTalk(npc); return; }
+        p.silver -= hp; p.horse = { age: la };
+        R().toast('The horse is yours. Press <b>B</b> to ride; on the travel map (M) every journey takes half the time.', 7000);
+        smithTalk(npc);
+      } });
+    }
     var am = item('ranged', la).ammo, amPrice = Math.round((AMMO[am].age >= 5 ? 20 : 8) * dr.price);
     btns.push({ label: 'Buy ' + AMMO[am].max / 2 + ' ' + AMMO[am].label + ' (' + amPrice + ' silver)', fn: function () {
       if (p.silver < amPrice) return R().toast('Not enough silver.');

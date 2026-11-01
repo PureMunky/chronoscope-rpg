@@ -41,6 +41,8 @@
       <div class="key"><b>R</b>Rest</div>
       <div class="key"><b>I</b>Gear</div>
       <div class="key"><b>U</b>Conceal</div>
+      <div class="key"><b>B</b>Ride</div>
+      <div class="key"><b>M</b>Map</div>
       <button class="key btnkey" id="k-scope"><b>T</b>Chronoscope</button>
       <button class="key btnkey" id="k-journal"><b>L</b>Journal</button>
       <button class="key btnkey" id="k-help"><b>H</b>Help</button>
@@ -63,7 +65,14 @@
     <div class="scope-grid">
       <div class="scope-left">
         <canvas id="scope-map" width="640" height="400"></canvas>
-        <div class="legend"><span class="sw home"></span>your people <span class="sw foe"></span>their doom <span class="sw sw-thread"></span>threads of fate <span class="sw you"></span>you</div>
+        <div id="scope-cmp" class="cmp" hidden>
+          <div class="cmp-maps">
+            <div><div class="cap">The world without you</div><canvas id="cmp-a" width="320" height="200"></canvas></div>
+            <div><div class="cap">Your world <span class="muted">(white: ruled differently)</span></div><canvas id="cmp-b" width="320" height="200"></canvas></div>
+          </div>
+          <div id="cmp-sum" class="cmp-sum"></div>
+        </div>
+        <div class="legend" id="scope-legend"><span class="sw home"></span>your people <span class="sw foe"></span>their doom <span class="sw sw-thread"></span>threads of fate <span class="sw you"></span>you</div>
       </div>
       <div class="scope-text" id="scope-text"></div>
     </div>
@@ -73,12 +82,20 @@
       <span id="scope-label"></span>
       <button class="btn primary" id="scope-go">Travel</button>
     </div>
-    <p class="hint">Pick a year with , and . (Shift ×10), PgUp/PgDn (±50), B for where you left, or [ ] to jump between threads of fate and your quests' years; Enter travels. Travelling does not age you. Acting in the past rewrites everything after it.</p>
+    <p class="hint">Pick a year with , and . (Shift ×10), PgUp/PgDn (±50), B for where you left, or [ ] to jump between threads and quest years; Enter travels. V compares your world with the world without you; Space plays history forward. Travelling does not age you. Acting in the past rewrites everything after it.</p>
   </section>
 
   <section id="journal" class="sheet panel-solid" hidden aria-label="Journal">
     <header><h2>Journal</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
     <div id="journal-body"></div>
+  </section>
+
+  <section id="travel" class="sheet panel-solid" hidden aria-label="Travel">
+    <header><h2>The long road</h2><button class="btn icon" data-close aria-label="Close">✕</button></header>
+    <div class="scope-grid">
+      <canvas id="travel-map" width="640" height="400"></canvas>
+      <div class="scope-text" id="travel-text"></div>
+    </div>
   </section>
 
   <section id="inv" class="sheet panel-solid inv" hidden aria-label="Inventory">
@@ -101,8 +118,12 @@
           <tr><td>Q</td><td>Drink a potion</td></tr>
           <tr><td>E</td><td>Talk</td></tr>
           <tr><td>R</td><td>Rest a season in a village: heal, restock arrows</td></tr>
+          <tr><td>M</td><td>Travel map: pick a place, pay for the road in months of your life</td></tr>
+          <tr><td>B</td><td>Mount or dismount your horse (markets sell them from the Bronze Age)</td></tr>
           <tr><td>T</td><td>The Chronoscope: see the future, travel in time</td></tr>
+          <tr><td>V</td><td>Watch your world and the world without you diverge, side by side, from your latest deed</td></tr>
           <tr><td>L</td><td>Journal</td></tr>
+          <tr><td>P / Esc</td><td>Pause: save to a slot, load, return to the title (the game also autosaves)</td></tr>
           <tr><td>I</td><td>Inventory: ↑↓ choose, Enter wield / wear / stow, X drop</td></tr>
           <tr><td>U</td><td>Conceal everything out of its time here; U again to take it out</td></tr>
           <tr><td>In dialogs</td><td>1–9 choose · Enter/E accept · Esc decline</td></tr>
@@ -142,13 +163,17 @@
       <div class="glyph big">⧗</div>
       <h1>Chronoscope<span>Wayfarer</span></h1>
       <p class="lede">Three thousand years of history, simulated. One life with a sword and a bow. A brass instrument that lets you go back and try again.</p>
+      <div id="save-row" class="save-row" hidden>
+        <button class="btn primary big" id="btn-continue">Continue</button>
+        <button class="btn" id="btn-load">Load…</button>
+      </div>
       <div class="seed-row">
         <label for="seed">World</label>
         <input id="seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off">
         <button class="btn" id="btn-rand" title="Random world">⚄</button>
         <button class="btn" id="btn-today" title="Today's world">Today</button>
       </div>
-      <button class="btn primary big" id="btn-begin">Begin</button>
+      <button class="btn primary big" id="btn-begin">Begin a new life</button>
       <p class="muted small">The world number decides everything: anyone who enters it is born into the same life. Played entirely on the keyboard.</p>
     </div>
   </div>

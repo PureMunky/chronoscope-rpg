@@ -9,6 +9,17 @@ Chronoscope, see what your deeds did, and travel to any year to try again.
 **Play locally:** open `index.html` in a browser (works from `file://`, no build
 step). Played entirely on the keyboard.
 
+## Saving
+
+The game **autosaves** after every deed, finished quest, journey through time,
+new year and passing of the Chronoscope, and every 90 seconds. **P** (or Esc)
+pauses: save to one of three slots, load, or return to the title, where
+**Continue** picks up your latest save. A save is a few kilobytes: since a
+timeline is only (world number, deeds), loading replays your deeds and
+rebuilds history exactly (tested: the whole simulated world comes back
+bit-identical), then restores you, your quests and what realms think of you.
+Saves live in the browser's local storage.
+
 ## How it differs from the original
 
 | Original Chronoscope | Wayfarer |
@@ -161,6 +172,27 @@ or at peace. The engine itself has no treaties; these are read, not decided.
 The place line under the year says how the realm you are in stands with your
 people and with you; the journal lists every realm that matters.
 
+## Watching history change
+
+Press **V** (or open the Chronoscope and press V) to see **the world without
+you** beside **your world**, playing forward from your latest deed (Space
+plays or pauses; , and . step). Your people are outlined in gold, and every
+province ruled by someone else than in the other history is marked. A
+summary for the year shown counts the provinces ruled differently, how many
+more or fewer people are alive, your people's size in each history, and the
+realms that exist only in yours or never came to be.
+
+## The long road
+
+**M** opens the travel map: move a cursor anywhere (or press 1–9 for your
+capital, quest targets and where you were born) and Enter sets out. The road
+costs **months of your life**: a province a month on foot, two on horseback,
+four months more for a sea passage, and you arrive older, in the season you
+would really have arrived. Escorts travel with you; you cannot leave with
+enemies on your heels. Markets sell **horses** from the Bronze Age on: **B**
+mounts and dismounts; riding is faster and covers twice the ground per month,
+and fighting puts you back on your feet.
+
 ## Rewinding a fight
 
 Once you carry the Chronoscope, **hold G**: the world slows to a crawl while
@@ -209,7 +241,7 @@ muster + canal + teaching in 3, both together in 7, and two such campaigns
 ## Controls
 
 WASD move (you face the way you walk) · G (hold) rewind 2–10 s · J sword · K bow (hold to strafe around the
-locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · T Chronoscope · L journal · H help.
+locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · B ride · M travel map · V compare histories · P pause/save · T Chronoscope · L journal · H help.
 Attacks lock on to the nearest foe in front of you. Dialogs: 1–9 / Enter / Esc.
 Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where you left, Home, Enter to travel.
 

@@ -200,3 +200,14 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 .where .rel { font-size: 11px; color: var(--muted); }
 .where .rel.bad { color: #ff9a8a; } .where .rel.good { color: var(--green); }
 .good { color: var(--green); }
+
+.save-row { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin: 18px 0 4px; }
+#btn-continue span { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; }
+
+.cmp-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cmp-maps canvas { display: block; width: 100%; aspect-ratio: 16 / 10; image-rendering: pixelated; border-radius: 6px; border: 1px solid var(--line); }
+.cmp .cap { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 3px; }
+.cmp-sum { margin-top: 8px; font-size: 13px; line-height: 1.6; }
+.cmp-year { font-family: Georgia, serif; font-size: 18px; color: var(--gold); }
+
+#travel-map { display: block; width: 100%; max-width: 640px; aspect-ratio: 16 / 10; border-radius: 8px; image-rendering: pixelated; border: 1px solid var(--line); }

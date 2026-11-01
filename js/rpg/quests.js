@@ -901,10 +901,28 @@
     g.quests = keep;
   }
 
+  /** For saving: the quests as plain data. */
+  function exportState() { return { quests: JSON.parse(JSON.stringify(G().quests)), nextId: nextId }; }
+  /** For loading: put the quests back; encounters respawn as you come near, escorts gather round you again. */
+  function importState(st) {
+    var g = G(), p = g.player;
+    nextId = Math.max(nextId, st.nextId || 1);
+    g.quests = st.quests || [];
+    g.quests.forEach(function (q) {
+      q.enc.forEach(function (e) {
+        e.spawned = false; e.relicSpawned = false;
+        if (e.arrive && e.arrived && !e.done) { e.arrived = false; if (e.foes.length && e.waves) { e.waves.unshift(e.foes); e.foes = []; } }
+        e.herbs.forEach(function (h) { h.spawned = false; });
+      });
+      if (q.escort && !q.escort.waiting && q.stage === 'go') spawnFollowers(q, p.x, p.y);
+    });
+  }
+
   root.Quests = {
     DEED_TEXT: DEED_TEXT, offersFor: offersFor, describe: describe, accept: accept, spawnFor: spawnFor, despawned: despawned,
     enterProvince: enterProvince, onKill: onKill, onPickup: onPickup, turnIn: turnIn, waitingOn: waitingOn, objectives: objectives,
     abandonAll: abandonAll, make: make, enc: enc, warband: warband, around: around, owns: owns,
+    exportState: exportState, importState: importState,
     tick: tick, echoes: echoes, takeEcho: takeEcho, onFollowerDeath: onFollowerDeath, inWindow: inWindow, windowOf: windowOf, ERA_SPAN: ERA_SPAN
   };
 }(this));
