@@ -51,7 +51,7 @@
     quests: [], questsDone: [], log: [], deeds: [], modal: null, panel: null,
     oracle: null, fateCache: null, fateWatch: null, cam: { x: 0, y: 0 }, shake: 0,
     keys: {}, target: null, time: 0, nextId: 1, lastProv: -1,
-    branchNames: {}, renown: 0, hudT: 0, activeT: 0, edgeWarned: false
+    branchNames: {}, renown: 0, standing: {}, hudT: 0, activeT: 0, edgeWarned: false
   };
 
   function civIdx(sig) {
@@ -68,6 +68,98 @@
     var nbs = Story.survey(s, hc).neighbours.slice().sort(function (a, b) { return s.sPop[b.c] - s.sPop[a.c]; });
     return nbs.length ? nbs[0].c : -1;
   }
+  // ---------------------------------------------------------------------------
+  // Relations between realms, read from the simulation's own history
+  // ---------------------------------------------------------------------------
+  // at war   one took provinces from the other in the last 20 years, or will within 5 (the war records)
+  // kin      one split from the other, or both from the same parent realm
+  // friendly not at war, but fighting a common enemy
+  // uneasy   neighbours sharing a border
+  // peace    everyone else
+  var REL = { bid: -1, bver: -1, year: -1, wl: -1, war: {}, enemies: {}, borderVer: -1, border: {}, memo: {} };
+  function relData() {
+    var b = G.cur;
+    if (REL.bid !== b.id || REL.bver !== b.version || REL.year !== G.year || REL.wl !== b.warLog.length) {
+      REL.bid = b.id; REL.bver = b.version; REL.year = G.year; REL.wl = b.warLog.length;
+      REL.war = {}; REL.enemies = {}; REL.memo = {};
+      b.warLog.forEach(function (w) {
+        if (w.dec * 10 > G.year + 5 || w.dec * 10 + 9 < G.year - 20) return;   // fought in the last 20 years, or about to be
+        REL.war[w.a + '|' + w.d] = REL.war[w.d + '|' + w.a] = 1;
+        (REL.enemies[w.a] = REL.enemies[w.a] || {})[w.d] = 1;
+        (REL.enemies[w.d] = REL.enemies[w.d] || {})[w.a] = 1;
+      });
+    }
+    if (REL.borderVer !== G.ver) {
+      REL.borderVer = G.ver; REL.border = {}; REL.memo = {};
+      var s = G.s;
+      for (var i = 0; i < N; i++) {
+        var c = s.owner[i];
+        if (c < 0) continue;
+        for (var d = 1; d <= 2; d++) {
+          var n = NB[i * 4 + d];
+          if (n < 0 || s.owner[n] < 0 || s.owner[n] === c) continue;
+          var a = s.cSig[c], bb = s.cSig[s.owner[n]];
+          REL.border[a + '|' + bb] = REL.border[bb + '|' + a] = 1;
+        }
+      }
+    }
+    return REL;
+  }
+  function relation(a, b) {
+    if (!a || !b) return 'none';
+    if (a === b) return 'self';
+    var R = relData(), mk = a + '|' + b, m = R.memo[mk];
+    if (m) return m;
+    return (R.memo[mk] = R.memo[b + '|' + a] = relationRaw(a, b, R));
+  }
+  function relationRaw(a, b, R) {
+    if (R.war[a + '|' + b]) return 'war';
+    var ca = civIdx(a), cb = civIdx(b), s = G.s;
+    if (ca >= 0 && cb >= 0) {
+      var pa = s.cParent[ca], pb = s.cParent[cb];
+      if (pa === b || pb === a || (pa && pa === pb)) return 'kin';
+    }
+    var ea = R.enemies[a], eb = R.enemies[b];
+    if (ea && eb) for (var k in ea) if (eb[k]) return 'friendly';
+    return R.border[a + '|' + b] ? 'uneasy' : 'peace';
+  }
+  var REL_TEXT = { war: 'at war with', kin: 'kin to', friendly: 'friendly with', uneasy: 'uneasy neighbours of', peace: 'at peace with', self: '', none: '' };
+  function warsOf(sig) { var e = relData().enemies[sig] || {}; return Object.keys(e).map(Number).filter(function (x) { return civIdx(x) >= 0; }); }
+
+  // Your standing with each realm: what they think of you. Your own people start out on your side.
+  function standingOf(sig) { return (G.standing[sig] || 0) + (G.home && sig === G.home.sig ? 40 : 0); }
+  function hostileToPlayer(sig) {
+    if (!sig) return true;
+    var st = standingOf(sig);
+    if (st <= -30) return true;
+    if (st >= 30) return false;
+    return G.home ? relation(G.home.sig, sig) === 'war' : false;
+  }
+  function friendlyToPlayer(sig) {
+    if (!sig) return false;
+    var st = standingOf(sig);
+    if (st >= 30) return true;
+    if (st <= -30) return false;
+    var r = G.home ? relation(G.home.sig, sig) : 'none';
+    return r === 'kin' || r === 'friendly';
+  }
+  function changeStanding(sig, by, why) {
+    if (!sig) return;
+    var before = standingOf(sig);
+    G.standing[sig] = (G.standing[sig] || 0) + by;
+    var after = standingOf(sig), name = esc(civName(sig));
+    if (before > -30 && after <= -30) toast('The <b>' + name + '</b> now count you as an enemy' + (why ? ' (' + why + ')' : '') + '. Their soldiers will attack you on sight.', 7000);
+    else if (before < 30 && after >= 30) toast('The <b>' + name + '</b> count you as a friend. Their soldiers will leave you be.', 6000);
+    reassessHostility();
+  }
+  /** Soldiers decide again whether you are their enemy (after a year passes or your standing changes). */
+  function reassessHostility() {
+    G.actors.forEach(function (a) {
+      if (!a.faction || !a.armed || a.forceHostile || a.offended) return;
+      a.hostile = hostileToPlayer(a.faction);
+    });
+  }
+
   function rulerTitle(sig, c) {
     var age = c >= 0 ? Sim.ageOf(G.s.cTech[c]) : 2, female = Sim.hash4(sig, 2, 77, 3) % 2 === 0;
     if (age <= 1) return female ? 'Chieftess' : 'Chieftain';
@@ -150,6 +242,7 @@
     p.age++;
     seekYear(G.year + 1);
     refreshActive();
+    reassessHostility();
     yearEvents();
     if (p.hp > maxHp(p)) p.hp = maxHp(p);
     if (p.age >= p.deathAge && !p.dead) passOn('old');
@@ -339,6 +432,7 @@
       a.npc = true; a.role = kind; a.r = kind === 'stele' ? 0.4 : 0.3; a.speed = kind === 'villager' || kind === 'settler' ? 1.2 : kind === 'stele' ? 0 : 0.5;
       a.hostile = false;
       if (a.follow) { a.maxHp = a.hp = kind === 'prophet' ? 140 : 70; a.speed = 4.2; }
+      else a.maxHp = a.hp = 25;
       if (!a.name) a.name = kind === 'villager' ? 'Villager' : kind;
     } else if (kind === 'ghost') {
       a.ghost = true; a.r = 0.3; a.hostile = false;
@@ -357,7 +451,10 @@
       a.dmg = Math.round((K.dmg || 0) * (1 + BAL.dmgAge * age));
       a.speed = K.speed || 0; a.r = K.r; a.xp = Math.round(K.xp * (1 + 0.1 * age)); a.reach = K.reach || 1; a.wind = K.wind || 0.3;
       a.aggro = K.aggro || 8; a.ranged = !!K.ranged; a.boss = !!K.boss; a.obj = !!K.obj; a.beast = !!K.beast; a.uniform = !!K.uniform; a.shield = !!K.shield;
-      if (a.hostile == null) a.hostile = true;
+      a.armed = !!K.uniform && kind !== 'hunter';
+      a.forceHostile = o.hostile === true;
+      // a realm's soldiers are your enemies only if your people are at war with them, or they have reason to hate you
+      if (a.hostile == null) a.hostile = a.faction && a.armed ? hostileToPlayer(a.faction) : true;
       if (a.obj) a.hostile = false;
       if (kind === 'greatbeast') a.look = Sim.hash4(a.prov, 1, 2, 3) % 2 ? 'bear' : 'wolf';
       if (!a.obj && !a.boss && !a.beast && !o.noElite && Math.random() < (o.qid ? 0.12 : 0.08) && !G.simMode) makeElite(a);
@@ -477,8 +574,27 @@
           var wk = t === TER.DESERT ? 'jackal' : t === TER.MOUNTAIN || (t === TER.FOREST && Math.random() < 0.2) ? 'bear' : 'wolf';
           spawnGroup(pi, wk === 'bear' ? ['bear'] : wk === 'jackal' ? ['jackal', 'jackal'] : Math.random() < 0.5 ? ['wolf', 'wolf'] : ['wolf', 'wolf', 'wolf']);
         }
-      } else if (c >= 0 && hc >= 0 && c !== hc && bordersRealm(pi, hc) && Math.random() < 0.7) {
-        spawnGroup(pi, Math.random() < 0.5 ? ['soldier', 'bowman'] : ['soldier', 'soldier', 'bowman'], { faction: sig, patrol: true });
+      } else if (c >= 0) {
+        // a war front: a neighbouring realm this one is really at war with (by the simulation's records)
+        var foeTile = -1;
+        for (var fy = -1; fy <= 1 && foeTile < 0; fy++) for (var fx = -1; fx <= 1; fx++) {
+          var fj = pi + fy * W + fx;
+          if (fj < 0 || fj >= N || s.owner[fj] < 0 || s.owner[fj] === c) continue;
+          if (relation(sig, s.cSig[s.owner[fj]]) === 'war') { foeTile = fj; break; }
+        }
+        if (foeTile >= 0 && Math.random() < 0.35) {
+          var fsig = s.cSig[s.owner[foeTile]], ang = Math.atan2(((foeTile / W) | 0) - ((pi / W) | 0), foeTile % W - pi % W);
+          var cx = bx + C + 0.5, cy = by + C + 0.5;
+          // defenders hold the village; attackers come from the enemy's side
+          Quests.warband(s, c, 2 + (Math.random() * 2 | 0), false).forEach(function (kd, i) { spawnNear(kd, cx + Math.cos(ang) * 1.5 + (i - 1), cy + Math.sin(ang) * 1.5, { prov: pi, faction: sig, front: true }); });
+          Quests.warband(s, s.owner[foeTile], 2 + (Math.random() * 2 | 0), Math.random() < 0.4).forEach(function (kd, i) {
+            var at = spawnNear(kd, cx + Math.cos(ang) * 5.5 + (i - 1) * 0.9, cy + Math.sin(ang) * 5.5 + (i % 2), { prov: pi, faction: fsig, front: true });
+            if (at) at.state = 'chase';
+          });
+        } else if (hc >= 0 && c !== hc && bordersRealm(pi, hc) && Math.random() < 0.35) {
+          // a patrol on a quiet border: it only troubles you if your people are at war, or you have wronged them
+          spawnGroup(pi, Math.random() < 0.5 ? ['soldier', 'bowman'] : ['soldier', 'soldier', 'bowman'], { faction: sig, patrol: true });
+        }
       }
       if (c >= 0 && (s.starve[pi] || Sim.meanAsab(s, c) < 2200) && Math.random() < 0.45) spawnGroup(pi, Math.random() < 0.5 ? ['bandit'] : ['bandit', 'archer']);
       if (s.plague[pi]) spawnGroup(pi, ['rat', 'rat', 'rat'].slice(0, 2 + (Math.random() * 2 | 0)));
@@ -645,6 +761,7 @@
       if (G.time - (a.blockT || -9) > 0.6) { floatText(a.x, a.y - 0.2, 'Blocked', '#b8c4d4'); a.blockT = G.time; }
     }
     dmg = Math.round(dmg);
+    if (!a.hostile && a.armed && a.faction) offend(a);
     a.hp -= dmg; a.flash = 0.12;
     floatText(a.x, a.y, String(dmg), '#ffe08a');
     if (!a.obj) {
@@ -658,13 +775,29 @@
   }
   function alertNear(a) {
     G.actors.forEach(function (b) {
-      if (b.hostile && b.state === 'idle' && Math.hypot(b.x - a.x, b.y - a.y) < 7) b.state = 'chase';
+      if (b.state !== 'idle' || Math.hypot(b.x - a.x, b.y - a.y) >= 7 || b.npc || b.obj || b.deco || b.ghost) return;
+      if ((a.faction && b.faction === a.faction) || (b.hostile && a.hostile && !a.faction)) b.state = 'chase';
     });
   }
 
+  /** You struck a soldier who was not your enemy: their comrades turn on you, and their realm remembers. */
+  function offend(a) {
+    var sig = a.faction;
+    G.actors.forEach(function (b) {
+      if (b.faction === sig && b.armed && Math.hypot(b.x - a.x, b.y - a.y) < 10) { b.hostile = true; b.offended = true; if (b.state === 'idle') b.state = 'chase'; }
+    });
+    if (!G.offendT || G.time - G.offendT > 5) { G.offendT = G.time; toast('You strike a soldier of the <b>' + esc(civName(sig)) + '</b>. Their comrades turn on you.'); }
+    changeStanding(sig, -12, 'you attacked their soldiers');
+  }
   function kill(a) {
     var i = G.actors.indexOf(a);
     if (i < 0) return;
+    // a realm remembers who killed its soldiers, and who defended its land
+    if (a.faction && a.armed) {
+      changeStanding(a.faction, -5);
+      var land = G.s.owner[a.prov], lsig = land >= 0 ? G.s.cSig[land] : 0;
+      if (lsig && lsig !== a.faction && relation(lsig, a.faction) === 'war') changeStanding(lsig, 4);
+    }
     G.actors.splice(i, 1);
     addEffect({ type: 'puff', x: a.x, y: a.y, life: 0.5, color: a.obj ? '#ff9a3c' : '#ddd' });
     if (a.obj) addEffect({ type: 'fireburst', x: a.x, y: a.y, life: 1.6 });
@@ -681,7 +814,12 @@
   }
 
   /** Keyboard aim assist. Sword: turn to the nearest foe within reach. Bow: the best target in a cone ahead. */
-  function targets() { return G.actors.filter(function (a) { return a.hostile || a.obj; }); }
+  /** Neutral soldiers can be struck, deliberately: in a skirmish you pick your side. Friends cannot. */
+  function canHit(a) { return a.hostile || a.obj || (a.armed && !a.npc && !friendlyToPlayer(a.faction)); }
+  function targets() {
+    var t = G.actors.filter(function (a) { return a.hostile || a.obj; });
+    return t.length ? t : G.actors.filter(function (a) { return canHit(a) && a.state !== 'idle'; });
+  }
   function swordTarget() {
     var p = G.player, best = null, bd = 2.2;
     targets().forEach(function (a) {
@@ -725,13 +863,15 @@
   }
   /** One sword stroke from (x, y) facing `face`: everything hostile in the arc is hit. */
   function meleeHit(x, y, face, dmg) {
-    G.actors.slice().forEach(function (a) {
-      if (!a.hostile && !a.obj) return;
+    var inArc = G.actors.filter(function (a) {
+      if (!canHit(a)) return false;
       var d = Math.hypot(a.x - x, a.y - y) - a.r;
-      if (d > 1.25) return;
-      if (d > 0.35 && angDiff(face, Math.atan2(a.y - y, a.x - x)) > 1.25) return;
-      damageActor(a, dmg * rnd(0.85, 1.15), 4.5, x, y);
+      if (d > 1.25) return false;
+      return !(d > 0.35 && angDiff(face, Math.atan2(a.y - y, a.x - x)) > 1.25);
     });
+    // a stroke at your enemies does not catch neutral soldiers beside them
+    var foes = inArc.filter(function (a) { return a.hostile || a.obj; });
+    (foes.length ? foes : inArc).forEach(function (a) { damageActor(a, dmg * rnd(0.85, 1.15), 4.5, x, y); });
   }
   function shoot() {
     var p = G.player;
@@ -753,25 +893,50 @@
     if (rw.gun) { addEffect({ type: 'muzzle', x: p.x + Math.cos(p.face) * 0.7, y: p.y + Math.sin(p.face) * 0.7, life: 0.12 }); G.shake = 0.12; Gear.onShot(); }
   }
   function enemyShoot(a) {
-    var p = foeTarget(a), d = Math.hypot(p.x - a.x, p.y - a.y), sp = 9;
+    var p = foeTarget(a) || G.player, d = Math.hypot(p.x - a.x, p.y - a.y), sp = 9;
     var lead = d / sp * 0.5, tx = p.x + (p.lastVx || 0) * lead, ty = p.y + (p.lastVy || 0) * lead;
     var ang = Math.atan2(ty - a.y, tx - a.x) + rnd(-0.08, 0.08);
     a.face = ang;
-    G.projectiles.push({ x: a.x + Math.cos(ang) * 0.4, y: a.y + Math.sin(ang) * 0.4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: a.dmg, mine: false, life: 1.4, src: a });
+    G.projectiles.push({ x: a.x + Math.cos(ang) * 0.4, y: a.y + Math.sin(ang) * 0.4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg: a.dmg, mine: false, life: 1.4, src: a, faction: a.faction, atPlayer: a.hostile });
   }
   /**
    * Who an enemy goes for: you, someone you are escorting if they are closer, or your past
    * self, whom enemies keep fighting as they did the first time (it is the you they were facing).
    */
   function foeTarget(a) {
-    var p = G.player, best = p, bd = p.dead ? 1e9 : Math.hypot(p.x - a.x, p.y - a.y);
+    var p = G.player, best = null, bd = 1e9;
+    if (a.hostile && !p.dead) { best = p; bd = Math.hypot(p.x - a.x, p.y - a.y); }
+    var reachFoes = (a.aggro || 8) * 1.6;
     for (var k = 0; k < G.actors.length; k++) {
-      var f = G.actors[k];
-      if (!(f.follow || (f.ghost && !f.hidden))) continue;
-      var d = Math.hypot(f.x - a.x, f.y - a.y) - (f.ghost ? 2.5 : -0.8);
+      var f = G.actors[k], d;
+      if (f === a) continue;
+      if (a.hostile && (f.follow || (f.ghost && !f.hidden))) {
+        d = Math.hypot(f.x - a.x, f.y - a.y) - (f.ghost ? 2.5 : -0.8);
+      } else if (a.faction && f.faction && f.faction !== a.faction && (f.armed || f.role === 'villager' || f.role === 'settler') && !f.follow) {
+        if (relation(a.faction, f.faction) !== 'war' && !(f.armed && f.offendedBy === a.faction)) continue;
+        d = Math.hypot(f.x - a.x, f.y - a.y);
+        if (d > reachFoes) continue;
+        if (f.role) d += 1.5;                       // soldiers before villagers
+      } else continue;
       if (d < bd) { bd = d; best = f; }
     }
     return best;
+  }
+  /** A blow landing on someone who is not you: soldiers, villagers, escorts, past selves. */
+  function hitNpc(t, dmg, src) {
+    if (t.follow || t.ghost) { hurtFollower(t, dmg); return; }
+    if (t.inv > 0) return;
+    t.hp -= dmg; t.flash = 0.12; t.inv = 0.15;
+    floatText(t.x, t.y, String(Math.round(dmg)), '#c8c8d0');
+    if (src) { var an = Math.atan2(t.y - src.y, t.x - src.x); t.kbx = (t.kbx || 0) + Math.cos(an) * 3; t.kby = (t.kby || 0) + Math.sin(an) * 3; }
+    if (t.npc) t.fleeT = 4;
+    else if (t.state === 'idle' || t.state === 'return') t.state = 'chase';
+    if (t.hp <= 0) {
+      var i = G.actors.indexOf(t);
+      if (i >= 0) G.actors.splice(i, 1);
+      addEffect({ type: 'puff', x: t.x, y: t.y, life: 0.5, color: '#ccc' });
+      if (t.qid) Quests.onKill(t);      // allies who finish your quest's foes still count
+    }
   }
   function hurtFollower(f, dmg) {
     if (f.inv > 0) return;
@@ -784,7 +949,7 @@
       if (f.ghost) paradox(f); else Quests.onFollowerDeath(f);
     }
   }
-  function hurt(target, dmg, src) { if (target === G.player) hurtPlayer(dmg, src); else hurtFollower(target, dmg); }
+  function hurt(target, dmg, src) { if (target === G.player) hurtPlayer(dmg, src); else hitNpc(target, dmg, src); }
   function roll() {
     var p = G.player;
     if (p.rollCd > 0 || p.dead) return;
@@ -941,9 +1106,19 @@
       return;
     }
     if (a.npc) {
+      // villagers run from soldiers of a realm at war with theirs
+      a.scareT = (a.scareT || 0) - dt;
+      if (a.scareT <= 0 && a.role === 'villager' && a.faction) {
+        a.scareT = 0.5;
+        for (var sk = 0; sk < G.actors.length; sk++) {
+          var r = G.actors[sk];
+          if (r.armed && r.faction && r.faction !== a.faction && Math.hypot(r.x - a.x, r.y - a.y) < 4.5 && relation(r.faction, a.faction) === 'war') { a.fleeT = 2; a.fleeFrom = r; break; }
+        }
+      }
       if (a.fleeT > 0) {
         a.fleeT -= dt;
-        if (steer(a, a.x - dx, a.y - dy, 1.8, dt) > 0.001) { a.face = Math.atan2(-dy, -dx); a.walkT += 1.8 * dt * 3; }
+        var fx2 = a.fleeFrom && G.actors.indexOf(a.fleeFrom) >= 0 ? a.fleeFrom.x : p.x, fy2 = a.fleeFrom && G.actors.indexOf(a.fleeFrom) >= 0 ? a.fleeFrom.y : p.y;
+        if (steer(a, a.x + (a.x - fx2), a.y + (a.y - fy2), 2.2, dt) > 0.001) { a.face = Math.atan2(a.y - fy2, a.x - fx2); a.walkT += 2.2 * dt * 3; }
         return;
       }
       if (d < 2 && !p.dead) { a.face = Math.atan2(dy, dx); return; }
@@ -956,10 +1131,11 @@
       return;
     }
     var home = Math.hypot(a.x - a.hx, a.y - a.hy);
-    if (p.dead && a.state !== 'idle') a.state = 'return';
-    // go for the nearest of you and anyone you are escorting
+    // go for the nearest enemy: you (if they are your enemy), those you escort, or soldiers of a realm at war with theirs
     var tg = foeTarget(a);
-    if (tg !== p) { dx = tg.x - a.x; dy = tg.y - a.y; d = Math.hypot(dx, dy); }
+    if (!tg) { if (a.state !== 'idle' && a.state !== 'return') a.state = 'return'; d = 1e9; dx = dy = 0; }
+    else { dx = tg.x - a.x; dy = tg.y - a.y; d = Math.hypot(dx, dy); }
+    var tgBoat = tg === p && p.boat;
     if (a.kind === 'greatbeast' && !a.summoned && a.hp < a.maxHp * 0.5) {
       a.summoned = true;
       toast('<b>' + esc(a.name) + '</b> howls. The pack answers!');
@@ -971,10 +1147,10 @@
         if (a.wt <= 0) { a.wx = a.hx + rnd(-2.5, 2.5); a.wy = a.hy + rnd(-2.5, 2.5); a.wt = rnd(2, 5); }
         if (steer(a, a.wx, a.wy, a.speed * 0.35, dt) > 0.001) { a.face = Math.atan2(a.wy - a.y, a.wx - a.x); a.walkT += a.speed * dt; }
         a.ignoreT = (a.ignoreT || 0) - dt;
-        if (!p.dead && d < a.aggro && (!p.boat || d < 3) && a.ignoreT <= 0) { a.state = 'chase'; alertNear(a); }
+        if (tg && d < a.aggro && (!tgBoat || d < 3) && a.ignoreT <= 0) { a.state = 'chase'; alertNear(a); }
         break;
       case 'chase':
-        if (home > 18 || d > a.aggro * 2.4 || (p.boat && d > 4)) { a.state = 'return'; break; }
+        if (!tg || home > 18 || d > a.aggro * 2.4 || (tgBoat && d > 4)) { a.state = 'return'; break; }
         // can't get to you (across water, walled in, no line of fire)? give up for a while rather than jitter in place
         a.chkT = (a.chkT || 0) + dt;
         if (a.chkT >= 1) {
@@ -1034,7 +1210,7 @@
         a.hp = Math.min(a.maxHp, a.hp + a.maxHp * 0.2 * dt);
         if (home < 1) a.state = 'idle';
         a.ignoreT = (a.ignoreT || 0) - dt;
-        if (!p.dead && d < a.aggro * 0.6 && home < 10 && a.ignoreT <= 0) a.state = 'chase';
+        if (tg && d < a.aggro * 0.6 && home < 10 && a.ignoreT <= 0) a.state = 'chase';
         break;
     }
   }
@@ -1076,16 +1252,18 @@
         if (pr.mine) {
           for (var i = 0; i < G.actors.length; i++) {
             var a = G.actors[i];
-            if ((!a.hostile && !a.obj) || Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + 0.12) continue;
+            if (!canHit(a) || Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + 0.12) continue;
             damageActor(a, pr.dmg * rnd(0.9, 1.1), pr.bullet ? 5 : 3, pr.x - pr.vx, pr.y - pr.vy);
             hit = true; break;
           }
-        } else if (!p.dead && Math.hypot(p.x - pr.x, p.y - pr.y) < p.r + 0.12) {
+        } else if (pr.atPlayer !== false && !p.dead && Math.hypot(p.x - pr.x, p.y - pr.y) < p.r + 0.12) {
           if (p.inv <= 0) { hurtPlayer(pr.dmg, pr.src); hit = true; }
         } else {
           for (var j = 0; j < G.actors.length; j++) {
             var f = G.actors[j];
-            if ((f.follow || (f.ghost && !f.hidden)) && Math.hypot(f.x - pr.x, f.y - pr.y) < f.r + 0.12) { hurtFollower(f, pr.dmg); hit = true; break; }
+            if (f === pr.src || Math.hypot(f.x - pr.x, f.y - pr.y) >= f.r + 0.12) continue;
+            if (pr.atPlayer !== false && (f.follow || (f.ghost && !f.hidden))) { hurtFollower(f, pr.dmg); hit = true; break; }
+            if (pr.faction && f.faction && f.faction !== pr.faction && (f.armed || f.role === 'villager') && relation(pr.faction, f.faction) === 'war') { hitNpc(f, pr.dmg, pr.src); hit = true; break; }
           }
         }
       }
@@ -1834,7 +2012,7 @@
     if (a.follow) { hpBar({ hp: a.hp, maxHp: a.maxHp, obj: false, boss: false }, x, y - a.r * TS * 3.4); ctx.fillStyle = '#7dffa0'; }
     if (a.elite && a.hostile) { ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffc94a'; ctx.fillText(a.name, x, y - a.r * TS * 3.4 - 6); ctx.textAlign = 'left'; }
     if (a.state === 'chargeWind') { ctx.strokeStyle = 'rgba(255,40,40,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y - 10); ctx.lineTo(x + Math.cos(a.face) * 120, y - 10 + Math.sin(a.face) * 120); ctx.stroke(); }
-    if (a.hostile && (a.hp < a.maxHp || a.boss || a.elite)) hpBar(a, x, y - a.r * TS * 3.4);
+    if ((a.hostile || a.armed) && (a.hp < a.maxHp || a.boss || a.elite)) hpBar(a, x, y - a.r * TS * 3.4);
     if (a.boss) { ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd76a'; ctx.fillText(a.name, x, y - a.r * TS * 3.4 - 6); ctx.textAlign = 'left'; }
     if (a.npc) {
       var mark = '', q = Quests.waitingOn(a);
@@ -2041,7 +2219,15 @@
     $('h-month').textContent = MONTHS[G.month];
     var pi = provOf(p.x, p.y), c = s.owner[pi], t = s.terrain[pi];
     var place = !Sim.isLand(t) ? 'Open sea' : c >= 0 ? (s.pop[pi] > 0 ? (L.isCapital(s, pi) ? 'Capital of the ' : 'Village of the ') : 'Lands of the ') + civName(s.cSig[c]) : 'Wilderness';
-    $('h-place').textContent = place + ' · ' + Sim.TERRAIN_NAMES[t] + ' (' + (pi % W) + ', ' + ((pi / W) | 0) + ')';
+    var relTxt = '', relCls = '';
+    if (c >= 0 && G.home) {
+      var rsig = s.cSig[c], rr = relation(G.home.sig, rsig), st = standingOf(rsig);
+      relTxt = rsig === G.home.sig ? 'your people' : rr === 'war' ? 'at war with your people' : rr === 'kin' ? 'kin of your people' : rr === 'friendly' ? 'friends of your people' : rr === 'uneasy' ? 'uneasy neighbours' : 'at peace';
+      if (rsig !== G.home.sig && st <= -30) relTxt += ', and they hate you';
+      else if (rsig !== G.home.sig && st >= 30) relTxt += ', and they like you';
+      relCls = hostileToPlayer(rsig) ? 'bad' : friendlyToPlayer(rsig) ? 'good' : '';
+    }
+    $('h-place').innerHTML = esc(place) + ' · ' + Sim.TERRAIN_NAMES[t] + ' (' + (pi % W) + ', ' + ((pi / W) | 0) + ')' + (relTxt ? '<br><span class="rel ' + relCls + '">' + esc(relTxt) + '</span>' : '');
     $('h-timeline').textContent = G.cur.parent < 0 ? 'The world without you' : G.cur.name;
     // fate
     var fh = '';
@@ -2145,6 +2331,23 @@
     renderInv();
   }
 
+  function realmsHTML() {
+    var s = G.s, hc = homeCiv();
+    if (!G.home) return '';
+    var rows = [], seen = {};
+    function add(sig) {
+      if (seen[sig] || sig === G.home.sig || civIdx(sig) < 0) return;
+      seen[sig] = 1;
+      var r = relation(G.home.sig, sig), st = standingOf(sig);
+      rows.push('<li><b>' + esc(civName(sig)) + '</b>: ' + REL_TEXT[r].replace(/ (with|to|of)$/, '') + (r === 'war' ? ' with your people' : '') +
+        ' · your standing ' + (st > 0 ? '+' : '') + st + (hostileToPlayer(sig) ? ' <span class="bad">(hostile to you)</span>' : friendlyToPlayer(sig) ? ' <span class="good">(friendly)</span>' : '') + '</li>');
+    }
+    warsOf(G.home.sig).forEach(add);
+    if (hc >= 0) Story.survey(s, hc).neighbours.forEach(function (n) { add(n.sig); });
+    Object.keys(G.standing).map(Number).forEach(add);
+    return '<h3>Realms (in ' + G.year + ')</h3><ul class="deeds">' + (rows.join('') || '<li class="muted">Your people have no neighbours to speak of.</li>') + '</ul>' +
+      '<p class="muted">Wars come from the history itself: who took land from whom in the last 20 years (or is massing to). Change history and they change.</p>';
+  }
   function renderJournal() {
     var h = '<h3>Quests</h3>';
     h += G.quests.length ? G.quests.map(function (q) {
@@ -2154,6 +2357,7 @@
     h += '<h3>Your deeds in this timeline</h3>';
     var mine = G.cur.interventions;
     h += G.deeds.length ? '<ul class="deeds">' + G.deeds.slice().reverse().map(function (d) { return '<li><span class="t">' + d.year + '</span> <b>' + DEED_NAMES[d.type] + '</b> ' + esc(d.why ? '(' + d.why + ')' : '') + '<div class="muted">' + d.msg + '</div></li>'; }).join('') + '</ul>' : '<p class="muted">None yet. Every quest you finish becomes a deed.</p>';
+    h += realmsHTML();
     h += '<p class="muted">Renown among the ' + esc(G.home.name) + ': <b>' + G.renown + '</b> (quests done for your own people).</p>';
     h += '<p class="muted">This timeline holds ' + mine.length + ' recorded deed' + (mine.length === 1 ? '' : 's') + ' in all (including earlier lives).</p>';
     h += '<h3>Chronicle of your lives</h3><ul class="log">' + G.log.slice().reverse().slice(0, 80).map(function (l) { return '<li><span class="t">' + l.year + '</span> ' + l.html + '</li>'; }).join('') + '</ul>';
@@ -2489,7 +2693,7 @@
     stateAt: function (y) { G.echoView = G.echoView || new Timeline.View(G.world); return G.echoView.seek(G.cur, clamp(y, 0, HORIZON - 1)); }, renown: function () { return G.renown; }, RENOWN_REGICIDE: RENOWN_REGICIDE, level: function () { return G.player.level; }, reward: reward, onQuestDone: onQuestDone, provOf: provOf,
     // for testing and debugging from the console
     debug: { travelTo: travelTo, readFate: readFate, gainXp: gainXp, talk: talk, kill: kill, nearestTalker: nearestTalker, curFate: curFate,
-      step: function (dt) { update(dt); }, rewind: rewind, rewindAvail: rewindAvail, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
+      step: function (dt) { update(dt); }, rewind: rewind, rewindAvail: rewindAvail, relation: relation, standingOf: standingOf, roll: roll, drink: drinkPotion, maxHp: function () { return maxHp(G.player); }, KINDS: KINDS, BAL: BAL,
       teleport: function (x, y) { G.player.x = x; G.player.y = y; G.cam.x = x; G.cam.y = y; manageActive(); }, provCenter: provCenter, homeCiv: homeCiv, foeCiv: foeCiv }
   };
   window.addEventListener('DOMContentLoaded', init);

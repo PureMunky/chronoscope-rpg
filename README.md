@@ -137,6 +137,30 @@ back. But:
 - **Selling the future.** Sell a far-future item to a smith and their
   people take it apart: a real knowledge deed for their whole realm.
 
+## Realms at war
+
+Relations between realms are read from the simulation's own history for the
+year you are in: **at war** (one took provinces from the other in the last
+20 years, or will within 5), **kin** (one split from the other, or both from
+the same parent), **friendly** (a common enemy), **uneasy** (a shared border),
+or at peace. The engine itself has no treaties; these are read, not decided.
+
+- **War fronts are alive.** On borders where two realms are at war, their
+  soldiers clash, raid villages, and villagers flee, whether or not you are
+  there. Your own people's soldiers fight beside you on their fronts.
+- **Hostility follows history.** A realm's soldiers attack you on sight only
+  if your people are at war with them. Patrols of realms at peace with yours
+  leave you alone.
+- **Standing.** Each realm remembers you. Strike a neutral soldier and their
+  comrades turn on you (and your standing drops); killing a realm's soldiers
+  sours it, and killing invaders on a realm's land warms it. At −30 a realm
+  treats you as an enemy whatever its wars; at +30, as a friend.
+- **Changing history changes all of this.** Rewrite a war and its fronts
+  move or vanish.
+
+The place line under the year says how the realm you are in stands with your
+people and with you; the journal lists every realm that matters.
+
 ## Rewinding a fight
 
 Once you carry the Chronoscope, **hold G**: the world slows to a crawl while

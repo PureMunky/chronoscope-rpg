@@ -196,3 +196,7 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 .strain .bar.sb { height: 5px; margin-top: 3px; }
 .strain .bar.sb > div { background: #7df0ff; }
 .strain.hot { color: #ff9a9a; } .strain.hot .bar.sb > div { background: #ff7a7a; }
+
+.where .rel { font-size: 11px; color: var(--muted); }
+.where .rel.bad { color: #ff9a8a; } .where .rel.good { color: var(--green); }
+.good { color: var(--green); }
