@@ -211,3 +211,30 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 .cmp-year { font-family: Georgia, serif; font-size: 18px; color: var(--gold); }
 
 #travel-map { display: block; width: 100%; max-width: 640px; aspect-ratio: 16 / 10; border-radius: 8px; image-rendering: pixelated; border: 1px solid var(--line); }
+
+/* ---------------------------------------------------------------------------
+   16-bit theme: console-style windows to match the pixel world (F2 toggles)
+   --------------------------------------------------------------------------- */
+body.px { --glass: linear-gradient(180deg, rgba(40, 56, 132, 0.92), rgba(18, 24, 72, 0.92)); --solid: linear-gradient(180deg, #2c3c8c, #141a4a); --line: #0a0c22; }
+body.px .panel-glass, body.px .panel-solid, body.px #tracker .obj, body.px .toast {
+  background: var(--glass); border: 2px solid #0a0c22; border-radius: 4px;
+  box-shadow: inset 0 0 0 2px #e8ecff, inset 0 0 0 3px #6a78c8, 0 3px 0 rgba(0, 0, 0, 0.45);
+  backdrop-filter: none;
+}
+body.px .panel-solid { background: var(--solid); }
+body.px .hud-left, body.px .hud-top, body.px #fate, body.px #tracker .obj, body.px .toast { padding-left: 14px; padding-right: 14px; }
+body.px .hud-left, body.px .hud-top { padding-top: 10px; padding-bottom: 10px; }
+body.px #minimap { padding: 4px; }
+body.px #h-name, body.px .when, body.px .dlg h2, body.px .title-card h1 { font-family: "Pixelify Sans", "Silkscreen", system-ui, sans-serif; letter-spacing: 0.02em; text-shadow: 2px 2px 0 #0a0c22; }
+body.px .dlg h2 { font-size: 24px; }
+body.px .bar { border-radius: 0; background: #0a0c22; box-shadow: inset 0 0 0 1px #6a78c8; }
+body.px .bar > div { border-radius: 0; }
+body.px .bar.hp > div { background: repeating-linear-gradient(90deg, #e04848 0 6px, #c83030 6px 7px); }
+body.px .bar.xp > div { background: repeating-linear-gradient(90deg, #7aa0ff 0 6px, #5a7ae0 6px 7px); }
+body.px #tracker .obj .dot { border-radius: 0; }
+body.px .btn { border-radius: 3px; border: 2px solid #0a0c22; background: #2c3c8c; box-shadow: inset 0 0 0 1px #8a98e8; }
+body.px .btn:hover { background: #3a4ca8; }
+body.px .btn.primary { background: #d8b25a; color: #1a1406; box-shadow: inset 0 0 0 1px #fff0b0, inset 0 -3px 0 #a8822a; }
+body.px .key { border-radius: 2px; }
+body.px .key b { border-radius: 2px; background: #0a0c22; border: 1px solid #8a98e8; box-shadow: 0 2px 0 #0a0c22; }
+body.px .dlg .vision { border-left: 4px solid var(--gold); }

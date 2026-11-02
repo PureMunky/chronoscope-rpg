@@ -51,7 +51,7 @@
     quests: [], questsDone: [], log: [], deeds: [], modal: null, panel: null,
     oracle: null, fateCache: null, fateWatch: null, cam: { x: 0, y: 0 }, shake: 0,
     keys: {}, target: null, time: 0, nextId: 1, lastProv: -1,
-    branchNames: {}, renown: 0, standing: {}, hudT: 0, activeT: 0, edgeWarned: false
+    branchNames: {}, renown: 0, standing: {}, hudT: 0, gfx: (function () { try { return localStorage.getItem('chronoscope-wayfarer:gfx') || 'pixel'; } catch (e) { return 'pixel'; } }()), activeT: 0, edgeWarned: false
   };
 
   function civIdx(sig) {
@@ -303,7 +303,7 @@
     G.cur = G.world.intervene(G.cur, G.year, { type: type, x: x, y: y, v: v || 0, note: why || '' });
     if (G.cur !== old) G.cur.name = lifeBranchName();
     var iv = G.cur.interventions[G.cur.interventions.length - 1];
-    if (type === 'bless' || type === 'blight') L.clearCaches();
+    if (type === 'bless' || type === 'blight') { L.clearCaches(); window.Pixel.clearCaches(); }
     seekYear(G.year);
     refreshActive();
     var after = measure(type, pi), msg = '';
@@ -1778,7 +1778,12 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
     var sx = G.shake > 0 ? rnd(-3, 3) : 0, sy = G.shake > 0 ? rnd(-3, 3) : 0;
-    var ox = Math.round(vw / 2 - G.cam.x * TS + sx), oy = Math.round(vh / 2 - G.cam.y * TS + sy);
+    var ox, oy, labels = [];
+    if (G.gfx === 'pixel') {
+      var pw = renderPixelWorld(sx, sy, labels);
+      ox = pw.ox; oy = pw.oy;
+    } else {
+    ox = Math.round(vw / 2 - G.cam.x * TS + sx); oy = Math.round(vh / 2 - G.cam.y * TS + sy);
     var px0 = Math.floor((G.cam.x - vw / 2 / TS) / P) - 1, px1 = Math.floor((G.cam.x + vw / 2 / TS) / P) + 1;
     var py0 = Math.floor((G.cam.y - vh / 2 / TS) / P) - 1, py1 = Math.floor((G.cam.y + vh / 2 / TS) / P) + 1;
     ctx.fillStyle = '#22466e'; ctx.fillRect(0, 0, vw, vh);
@@ -1812,7 +1817,19 @@
       else if (o.a) drawActor(o.a, ox + o.a.x * TS, oy + o.a.y * TS);
       else drawPlayer(p, ox + p.x * TS, oy + p.y * TS);
     });
-    G.projectiles.forEach(function (pr) {
+    }
+    // names of bosses and elites, sharp at full resolution
+    ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    labels.forEach(function (lb) { ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(lb.text, ox + lb.x * TS + 1, oy + lb.y * TS + 1); ctx.fillStyle = lb.col; ctx.fillText(lb.text, ox + lb.x * TS, oy + lb.y * TS); });
+    ctx.textAlign = 'left';
+    if (G.gfx === 'pixel' && G.target && G.actors.indexOf(G.target) >= 0 && !p.dead) {
+      var rt = G.target, rx = ox + rt.x * TS, ry = oy + rt.y * TS - rt.r * TS - 6;
+      ctx.strokeStyle = G.keys.k ? 'rgba(255,215,90,0.95)' : 'rgba(255,215,90,0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (var rk = 0; rk < 4; rk++) { var a0 = rk * Math.PI / 2 + G.time * 2; ctx.moveTo(rx + Math.cos(a0) * 14, ry + Math.sin(a0) * 14); ctx.arc(rx, ry, 14, a0, a0 + 0.9); }
+      ctx.stroke();
+    }
+    if (G.gfx !== 'pixel') G.projectiles.forEach(function (pr) {
       var x = ox + pr.x * TS, y = oy + pr.y * TS, a = Math.atan2(pr.vy, pr.vx);
       if (pr.bullet) { ctx.strokeStyle = 'rgba(255,240,180,0.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 28, y - Math.sin(a) * 28); ctx.lineTo(x, y); ctx.stroke(); return; }
       if (pr.stone) { ctx.fillStyle = '#9a948a'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); return; }
@@ -1820,12 +1837,13 @@
       ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 12, y - Math.sin(a) * 12); ctx.lineTo(x, y); ctx.stroke();
       ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.arc(x, y, 2, 0, 7); ctx.fill();
     });
-    G.effects.forEach(function (e) { drawEffect(e, ox, oy); });
+    G.effects.forEach(function (e) { if (G.gfx !== 'pixel' || e.type === 'num') drawEffect(e, ox, oy); });
     // objective markers
     objectiveList().forEach(function (o) { if (o.pi >= 0) drawMarker(o, ox, oy); });
     // season tint
     var m = G.month;
-    if (m <= 1 || m === 11) { ctx.fillStyle = 'rgba(210,225,255,0.13)'; ctx.fillRect(0, 0, vw, vh); }
+    if (G.gfx === 'pixel') { /* the pixel palettes already carry the season */ }
+    else if (m <= 1 || m === 11) { ctx.fillStyle = 'rgba(210,225,255,0.13)'; ctx.fillRect(0, 0, vw, vh); }
     else if (m >= 8) { ctx.fillStyle = 'rgba(200,120,40,0.07)'; ctx.fillRect(0, 0, vw, vh); }
     // talk prompt
     var t = !G.modal && !p.dead && nearestTalker();
@@ -1862,6 +1880,188 @@
       var gr = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.35, vw / 2, vh / 2, Math.max(vw, vh) * 0.7);
       gr.addColorStop(0, 'rgba(120,0,0,0)'); gr.addColorStop(1, 'rgba(120,0,0,' + (0.35 + Math.sin(G.time * 5) * 0.1) + ')');
       ctx.fillStyle = gr; ctx.fillRect(0, 0, vw, vh);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 16-bit rendering: the world at 16 pixels a tile, scaled up 2x with crisp pixels
+  // ---------------------------------------------------------------------------
+  var pxBuf = null, pxCtx = null;
+  var PX = window.Pixel, PT2 = 16;
+  var PX_HUMAN = { villager: 1, settler: 1, exile: 1, elder: 1, royal: 1, lord: 1, ruler: 1, spymaster: 1, scholar: 1, stranger: 1, prophet: 1, sentry: 1, soldier: 1, guard: 1,
+    captain: 1, bowman: 1, shield: 1, bandit: 1, thief: 1, archer: 1, chief: 1, rebel: 1, hunter: 1, warden: 1, smith: 1 };
+  function rgbArr(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  /** What a person looks like as a sprite, and what they carry. */
+  function pixelSpec(a) {
+    var sig = a.faction, cr = sig ? PX.civRamp(sig) : null, tunic = cr ? cr[2] : [122, 106, 88], light = cr ? cr[3] : [176, 150, 112];
+    var sp = { body: tunic, skin: PX.skinFor(a.id), hair: PX.hairFor(a.id), hat: 'none' }, w = null;
+    switch (a.kind) {
+      case 'villager': case 'settler': case 'exile': sp.body = light; if (a.id % 3 === 0) { sp.hat = 'hood'; sp.hatCol = [138, 106, 72]; } break;
+      case 'elder': sp.body = [142, 124, 174]; sp.robe = true; sp.hair = [216, 208, 196]; w = 'staff'; break;
+      case 'royal': case 'lord': case 'ruler': sp.hat = 'crown'; sp.belt = rgbArr('#f2c84a'); w = a.kind === 'ruler' ? 'sword' : null; break;
+      case 'spymaster': sp.body = [47, 52, 64]; sp.hat = 'hood'; sp.hatCol = [31, 35, 44]; break;
+      case 'scholar': sp.body = [60, 90, 154]; sp.robe = true; sp.hat = 'hood'; sp.hatCol = [44, 68, 122]; w = 'staff'; break;
+      case 'stranger': sp.body = [138, 143, 152]; sp.robe = true; sp.hat = 'hood'; sp.hatCol = [106, 111, 120]; w = 'staff'; break;
+      case 'prophet': sp.body = [236, 230, 218]; sp.robe = true; sp.hat = 'hood'; sp.hatCol = [214, 206, 190]; w = 'staff'; break;
+      case 'sentry': case 'soldier': case 'guard': sp.hat = 'helmet'; sp.belt = [58, 42, 26]; w = 'spear'; break;
+      case 'shield': sp.hat = 'helmet'; sp.belt = [58, 42, 26]; w = 'shield'; break;
+      case 'bowman': sp.hat = 'helmet'; w = 'bow'; break;
+      case 'captain': sp.hat = 'goldhelm'; sp.belt = rgbArr('#f2c84a'); w = 'sword'; break;
+      case 'bandit': sp.body = [106, 80, 56]; sp.hat = 'hood'; sp.hatCol = [74, 56, 40]; w = 'club'; break;
+      case 'thief': sp.body = [80, 70, 60]; sp.hat = 'hood'; sp.hatCol = [50, 44, 40]; w = 'sword'; break;
+      case 'archer': sp.body = [90, 96, 56]; sp.hat = 'hood'; sp.hatCol = [58, 64, 40]; w = 'bow'; break;
+      case 'chief': sp.body = [110, 48, 30]; sp.hat = 'helmet'; w = 'axe'; break;
+      case 'rebel': sp.body = [138, 74, 58]; sp.hat = 'hood'; sp.hatCol = [106, 42, 42]; w = 'club'; break;
+      case 'hunter': sp.body = [44, 44, 46]; sp.hat = 'hood'; sp.hatCol = [26, 26, 28]; sp.belt = [200, 70, 40]; w = 'spear'; break;
+      case 'warden': sp.body = [88, 104, 88]; sp.hat = 'helmet'; sp.skin = [[184, 196, 176], [140, 156, 134]]; w = 'axe'; break;
+      case 'smith': sp.body = [96, 78, 60]; sp.belt = [42, 26, 12]; w = 'club'; break;
+    }
+    if (a.state === 'aim' && a.ranged) w = w || 'bow';
+    return { spec: sp, weapon: w };
+  }
+  function playerSpec(p) {
+    var cl = p.eq.clothes, body = cl && cl.sig ? PX.civRamp(cl.sig)[cl.age >= 4 ? 1 : 2] : [47, 127, 143];
+    var sp = { body: body, skin: PX.skinFor(Sim.hash4(G.world.seed, p.lives, 3, 3)), hair: PX.hairFor(p.lives + 2), hat: 'none', belt: rgbArr('#c8a050') };
+    if (p.eq.armor.age >= 4 && !p.eq.armor.none) { sp.hat = 'helmet'; }
+    else if (cl && cl.age >= 6) { sp.hat = 'tophat'; }
+    else if (cl && cl.age <= 1) { sp.hat = 'hood'; sp.hatCol = [106, 74, 42]; }
+    return sp;
+  }
+  function pxRing(g, x, y, rx, ry, col) {
+    g.fillStyle = col;
+    for (var k = 0; k < 28; k++) { var an = k / 28 * Math.PI * 2; g.fillRect(Math.round(x + Math.cos(an) * rx), Math.round(y + Math.sin(an) * ry), 1, 1); }
+  }
+  function pxBar(g, x, y, w, f, col) {
+    x = Math.round(x - w / 2); y = Math.round(y);
+    g.fillStyle = 'rgba(16,12,24,0.9)'; g.fillRect(x - 1, y - 1, w + 2, 4);
+    g.fillStyle = col; g.fillRect(x, y, Math.max(0, Math.round(w * f)), 2);
+  }
+  function pxMark(g, x, y, ch, col) {
+    x = Math.round(x); y = Math.round(y);
+    g.fillStyle = '#18121e'; g.fillRect(x - 2, y - 1, 4, ch === '?' ? 9 : 9);
+    g.fillStyle = col;
+    if (ch === '!') { g.fillRect(x - 1, y, 2, 5); g.fillRect(x - 1, y + 6, 2, 2); }
+    else { g.fillRect(x - 1, y, 3, 1); g.fillRect(x + 1, y + 1, 1, 2); g.fillRect(x, y + 3, 1, 2); g.fillRect(x, y + 6, 1, 2); }
+  }
+  /** Draw something old-style (beasts, objects) into the low-resolution buffer, at half scale. */
+  function legacyInto(g, fn, x, y) {
+    var keep = ctx; ctx = g;
+    ctx.save(); ctx.translate(x, y); ctx.scale(0.5, 0.5);
+    try { fn(0, 0); } finally { ctx.restore(); ctx = keep; }
+  }
+  function renderPixelWorld(sx, sy, labels) {
+    var vw = G.vw, vh = G.vh, bw = Math.ceil(vw / 2), bh = Math.ceil(vh / 2), s = G.s, p = G.player;
+    if (!pxBuf || pxBuf.width !== bw || pxBuf.height !== bh) { pxBuf = pxBuf || document.createElement('canvas'); pxBuf.width = bw; pxBuf.height = bh; pxCtx = pxBuf.getContext('2d'); }
+    var g = pxCtx;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false;
+    PX.beginFrame(); PX.setSeason(G.month);
+    var box = Math.round(bw / 2 - G.cam.x * PT2 + sx / 2), boy = Math.round(bh / 2 - G.cam.y * PT2 + sy / 2);
+    var PWp = P * PT2;
+    var px0 = Math.floor((G.cam.x - bw / 2 / PT2) / P) - 1, px1 = Math.floor((G.cam.x + bw / 2 / PT2) / P) + 1;
+    var py0 = Math.floor((G.cam.y - bh / 2 / PT2) / P) - 1, py1 = Math.floor((G.cam.y + bh / 2 / PT2) / P) + 2;
+    g.fillStyle = '#1a3f72'; g.fillRect(0, 0, bw, bh);
+    var px, py, pi;
+    for (py = py0; py <= py1; py++) for (px = px0; px <= px1; px++) {
+      if (px < 0 || py < 0 || px >= W || py >= H) continue;
+      pi = py * W + px;
+      g.drawImage(PX.renderProvince(s, pi, G.ver), box + px * PWp, boy + py * PWp - PX.PAD);
+    }
+    // plague: a sickly haze and drifting motes
+    for (py = py0; py <= py1; py++) for (px = px0; px <= px1; px++) {
+      if (px < 0 || py < 0 || px >= W || py >= H || !s.plague[py * W + px]) continue;
+      var bx = box + px * PWp, by = boy + py * PWp;
+      g.fillStyle = 'rgba(110,150,50,0.16)'; g.fillRect(bx, by, PWp, PWp);
+      g.fillStyle = 'rgba(180,220,100,0.6)';
+      for (var k = 0; k < 14; k++) g.fillRect(bx + Math.floor((k * 97 + G.time * (4 + k % 5)) % PWp), by + Math.floor((k * 53 + Math.sin(G.time + k) * 10 + 400) % PWp), 1, 1);
+    }
+    var list = [];
+    G.pickups.forEach(function (pk) { list.push({ y: pk.y - 0.5, pk: pk }); });
+    G.actors.forEach(function (a) { list.push({ y: a.y, a: a }); });
+    if (!p.dead) list.push({ y: p.y, me: true });
+    list.sort(function (a, b) { return a.y - b.y; });
+    list.forEach(function (o) {
+      if (o.pk) { PX.drawPickup(g, o.pk, box + o.pk.x * PT2, boy + o.pk.y * PT2, G.time); return; }
+      if (o.me) { drawPixelPlayer(g, p, box + p.x * PT2, boy + p.y * PT2); return; }
+      var a = o.a, x = box + a.x * PT2, y = boy + a.y * PT2;
+      if (a.ghost) {
+        if (a.hidden) return;
+        var gs = playerSpec(p); gs.body = [111, 216, 240]; gs.hair = [190, 244, 252]; gs.skin = [[205, 239, 247], [150, 210, 225]]; gs.belt = [150, 240, 255];
+        PX.drawCharacter(g, gs, a.face, a.walkT, true, x, y, 0.6);
+        PX.drawWeapon(g, a.w, PX.dirRow(a.face), x, y, false);
+        if (a.hp < a.maxHp) pxBar(g, x, y - 27, 12, a.hp / a.maxHp, '#7df0ff');
+        return;
+      }
+      if (a.deco || a.obj || a.role === 'stele') { drawPixelThing(g, a, x, y); return; }
+      if (a.beast) {
+        var big = a.kind === 'greatbeast', hh = PX.drawBeast(g, a, x, y, big ? 2 : 1);
+        if (big) { g.fillStyle = 'rgba(160,20,20,0.18)'; g.fillRect(Math.round(x - 20), Math.round(y - hh - 4), 40, hh + 6); }
+        if (a.hp < a.maxHp || big) pxBar(g, x, y - hh - 4, big ? 24 : 12, a.hp / a.maxHp, '#e04848');
+        if (big || a.boss || a.elite) labels.push({ x: a.x, y: a.y - (hh + 8) / PT2, text: a.name, col: '#ffd76a' });
+        return;
+      }
+      if (!PX_HUMAN[a.kind]) { legacyInto(g, function (lx, ly) { drawActor(a, lx, ly); }, x, y); if (a.boss || a.elite) labels.push({ x: a.x, y: a.y - a.r * 2 - 1.4, text: a.name, col: '#ffd76a' }); return; }
+      var ps = pixelSpec(a), moving = a.state === 'chase' || a.state === 'return' || a.fleeT > 0 || (a.npc && Math.hypot(a.wx - a.x, a.wy - a.y) > 0.1) || a.follow;
+      if (a.elite) pxRing(g, x, y, 7, 3, '#ffc94a');
+      if (a.state === 'wind' || a.state === 'chargeWind' || a.state === 'aim') pxRing(g, x, y - 10, 10, 12, Math.sin(G.time * 30) > 0 ? '#ff4a3a' : '#ff9a6a');
+      if (a.kind === 'prophet') { g.fillStyle = 'rgba(255,240,180,0.25)'; g.fillRect(Math.round(x - 9), Math.round(y - 26), 18, 26); }
+      if (a.flash > 0) g.filter = 'brightness(2.6)';
+      var row = PX.drawCharacter(g, ps.spec, a.face, a.walkT * 0.8, moving, x, y);
+      g.filter = 'none';
+      PX.drawWeapon(g, ps.weapon, row, x, y, a.state === 'wind' || a.state === 'recover');
+      if (a.state === 'chargeWind') { g.fillStyle = 'rgba(255,40,40,0.8)'; for (var cl = 4; cl < 60; cl += 2) g.fillRect(Math.round(x + Math.cos(a.face) * cl), Math.round(y - 6 + Math.sin(a.face) * cl), 1, 1); }
+      if ((a.hostile || a.armed || a.follow) && (a.hp < a.maxHp || a.boss || a.elite)) pxBar(g, x, y - 27, a.boss ? 24 : 12, a.hp / a.maxHp, a.follow ? '#7dffa0' : '#e04848');
+      if (a.boss || a.elite) labels.push({ x: a.x, y: a.y - 1.95, text: a.name, col: a.boss ? '#ffd76a' : '#ffc94a' });
+      if (a.npc) {
+        var mark = '', q = Quests.waitingOn(a);
+        if (q && q.stage === 'return' && q.returnKey === a.key) mark = '?';
+        else if (!q && (a.role === 'elder' || a.role === 'spymaster' || a.role === 'scholar' || a.role === 'stranger' || (a.role === 'royal' && (G.stage === 'prologue' || G.stage === 'quest' || G.stage === 'won')))) {
+          if (a.offerVer !== G.ver) { a.offerVer = G.ver; a.hasOffer = a.role === 'stranger' || (a.role === 'royal' && G.stage === 'prologue') || Quests.offersFor(a).length > 0; }
+          if (a.hasOffer) mark = '!';
+        }
+        if (mark) pxMark(g, x, y - 34 + Math.round(Math.sin(G.time * 4)), mark, mark === '?' ? '#7df0ff' : '#ffd23c');
+      }
+    });
+    // arrows, shot and steel, in the same pixels as everything else
+    G.projectiles.forEach(function (pr) { PX.drawProjectile(g, pr, box + pr.x * PT2, boy + pr.y * PT2); });
+    G.effects.forEach(function (e) { if (e.type !== 'num') PX.drawEffect(g, e, box + e.x * PT2, boy + e.y * PT2, box + p.x * PT2, boy + p.y * PT2); });
+    PX.ambient(g, { s: s, ver: G.ver, time: G.time, month: G.month, box: box, boy: boy, bw: bw, bh: bh });
+    // the world, twice as large, with crisp pixels
+    ctx.drawImage(pxBuf, 0, 0, bw, bh, 0, 0, bw * 2, bh * 2);
+    return { ox: box * 2, oy: boy * 2 };
+  }
+  /** Camps, ruins, granaries, wells and the old stones, as pixel sprites. */
+  function drawPixelThing(g, a, x, y) {
+    if (a.deco && a.kind !== 'ruins' && a.kind !== 'tent') { PX.drawFire(g, x, y, G.time); return; }
+    var sp = PX.objectSprite(a.role === 'stele' ? 'stele' : a.kind);
+    if (!sp) { legacyInto(g, function (lx, ly) { drawActor(a, lx, ly); }, x, y); return; }
+    var X = Math.round(x - sp.width / 2), Y = Math.round(y - sp.height + 1);
+    PX.shadow(g, x, y, Math.round(sp.width / 2.4));
+    if (a.flash > 0) g.filter = 'brightness(2.2)';
+    g.drawImage(sp, X, Y);
+    g.filter = 'none';
+    if (a.role === 'stele') { g.fillStyle = 'rgba(255,220,120,' + (0.14 + Math.sin(G.time * 2) * 0.06) + ')'; g.fillRect(X - 3, Y - 2, sp.width + 6, sp.height + 2); }
+    if (a.obj && a.hp < a.maxHp) {
+      var burn = 1 - a.hp / a.maxHp;
+      for (var k = 0; k < 3 + Math.round(burn * 5); k++) { g.fillStyle = ['#ff9a3c', '#ffd23c', '#ff5a2c'][k % 3]; g.fillRect(Math.round(x - 6 + ((k * 37 + Math.floor(G.time * 14)) % 12)), Math.round(Y - 1 - ((k * 13 + Math.floor(G.time * 20)) % 6)), 2, 2); }
+      pxBar(g, x, Y - 6, 14, a.hp / a.maxHp, '#e04848');
+    }
+  }
+  function drawPixelPlayer(g, p, x, y) {
+    if (p.mounted) PX.drawHorse(g, x, y, p.face, p.walkT, p.moving);
+    // which way you face, on the ground
+    g.fillStyle = 'rgba(255,255,255,0.6)';
+    for (var k = 0; k < 3; k++) g.fillRect(Math.round(x + Math.cos(p.face) * (8 + k)), Math.round(y + Math.sin(p.face) * (8 + k) * 0.6), 1, 1);
+    var flash = p.inv > 0 && p.hurt > 0 && Math.sin(G.time * 40) > 0;
+    if (flash) g.filter = 'brightness(2.4)';
+    var row = PX.drawCharacter(g, playerSpec(p), p.face, p.walkT, p.moving || p.rollT > 0, x, y - (p.mounted ? 7 : 0), p.rollT > 0 ? 0.6 : null);
+    g.filter = 'none';
+    var w = p.bowT > 0 || G.keys.k ? p.eq.ranged.w : p.eq.melee.w;
+    PX.drawWeapon(g, w, row, x, y - (p.mounted ? 7 : 0), p.swingT > 0);
+    if (G.stage === 'quest' || G.stage === 'won') {
+      var h = G.oracle ? G.oracle.hum(Math.floor(p.x / P), Math.floor(p.y / P), G.year) : null;
+      g.fillStyle = h ? (h.level === 3 ? '#bff' : h.level === 2 ? '#7cd' : '#5ab') : '#d8b25a';
+      g.fillRect(Math.round(x + 3), Math.round(y - 8 - (p.mounted ? 7 : 0)), 2, 2);
+      if (h && Math.sin(G.time * (4 + h.level * 4)) > 0) { g.fillStyle = 'rgba(160,240,255,0.5)'; g.fillRect(Math.round(x + 2), Math.round(y - 9 - (p.mounted ? 7 : 0)), 4, 4); }
     }
   }
 
@@ -2793,6 +2993,7 @@
       else if (k === 'g' && !e.repeat) startRewindHold();
       else if (k === 'p' || k === 'escape') pauseMenu();
       else if (k === 'b') toggleMount();
+      else if (k === 'f2') { e.preventDefault(); toggleGfx(); }
       else if (k === 'm') openPanel('travel');
       else if (k === 'v') {
         if (!scopeUnlocked()) toast('You do not have the Chronoscope yet.');
@@ -2901,9 +3102,15 @@
     toast('Welcome back, <b>' + esc(p.name) + '</b>. It is ' + MONTHS[G.month] + ' of the year ' + G.year + '.', 6000);
   }
 
+  function toggleGfx() {
+    G.gfx = G.gfx === 'pixel' ? 'classic' : 'pixel';
+    document.body.classList.toggle('px', G.gfx === 'pixel');
+    try { localStorage.setItem('chronoscope-wayfarer:gfx', G.gfx); } catch (e) { /* private window */ }
+    toast('Graphics: <b>' + (G.gfx === 'pixel' ? '16-bit' : 'classic') + '</b> (F2 to switch).');
+  }
   function pauseMenu() {
     var all = readSaves();
-    var btns = [];
+    var btns = [{ label: 'Graphics: ' + (G.gfx === 'pixel' ? '16-bit (switch to classic)' : 'classic (switch to 16-bit)'), fn: function () { toggleGfx(); pauseMenu(); } }];
     ['1', '2', '3'].forEach(function (k) { btns.push({ label: 'Save to slot ' + k + (all[k] ? ' (overwrite)' : ''), fn: function () { saveGame(k); } }); });
     btns.push({ label: 'Load…', fn: function () { loadMenu(true); } });
     btns.push({ label: 'Return to the title (autosaves)', fn: function () { saveGame('auto', true); location.reload(); } });
@@ -2927,6 +3134,7 @@
     G.view = new Timeline.View(G.world);
     scope.view = null;
     L.clearCaches();
+    window.Pixel.clearCaches();
     G.stage = 'loading';
     $('title').hidden = true;
     $('loading').hidden = false;
@@ -3005,6 +3213,7 @@
   }
 
   function init() {
+    document.body.classList.toggle('px', G.gfx === 'pixel');
     canvas = $('game');
     ctx = canvas.getContext('2d');
     resize();

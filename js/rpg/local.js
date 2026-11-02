@@ -57,16 +57,58 @@
   // ---------------------------------------------------------------------------
   // Static layer
   // ---------------------------------------------------------------------------
-  var staticCache = {};
+  var staticCache = {}, segCache = {};   // segCache: which edge's path (bit k) each path tile belongs to
   function groundFor(t) {
     return t === TER.FOREST ? T.DGRASS : t === TER.HILLS ? T.DIRT : t === TER.MOUNTAIN ? T.ROCKY : t === TER.DESERT ? T.SAND :
       t === TER.DEEP ? T.DEEP : t === TER.SEA ? T.SHALLOW : T.GRASS;
   }
   /** Terrain a tile looks like: province boundaries are jittered so coasts and forests aren't square. */
   function lookTerrain(s, gx, gy) {
-    var jx = Math.round((noise(s.seed, gx, gy, 3, 903) - 0.5) * 5), jy = Math.round((noise(s.seed, gx, gy, 3, 904) - 0.5) * 5);
+    // a broad wobble and a fine one, so coasts, hills and woods form blobs and fingers instead of squares
+    var jx = Math.round((noise(s.seed, gx, gy, 7, 903) - 0.5) * 10 + (noise(s.seed, gx, gy, 2, 905) - 0.5) * 3);
+    var jy = Math.round((noise(s.seed, gx, gy, 7, 904) - 0.5) * 10 + (noise(s.seed, gx, gy, 2, 906) - 0.5) * 3);
     var px = Math.max(0, Math.min(W - 1, Math.floor((gx + jx) / P))), py = Math.max(0, Math.min(H - 1, Math.floor((gy + jy) / P)));
     return s.terrain[py * W + px];
+  }
+
+  /** Where a province's paths meet (its hub, near the centre) and where its river rises. */
+  function hubOf(s, pi) {
+    var h = Sim.hash4(s.seed, pi, 3, 992);   // fixed per province: terrain never depends on who rules it
+    return { x: C - 1 + h % 3, y: C - 1 + (h >> 4) % 3, river: [2 + (h >> 8) % 8, 2 + (h >> 12) % 8] };
+  }
+  /** The tile where a path (or river) crosses edge k (0 N, 1 E, 2 S, 3 W). Both neighbours compute the same spot. */
+  function edgePoint(s, pi, k, ch) {
+    var x = pi % W, y = (pi / W) | 0;
+    if (k === 1 || k === 3) { var ex = k === 1 ? pi : pi - 1; var off = 2 + Sim.hash4(s.seed, ex, 1, ch) % 8; return [k === 1 ? P - 1 : 0, off]; }
+    var ey = k === 2 ? pi : pi - W, off2 = 2 + Sim.hash4(s.seed, ey, 2, ch) % 8;
+    return [off2, k === 2 ? P - 1 : 0];
+  }
+  /** Carve a winding, 4-connected line of tiles from (x0,y0) to (x1,y1): a path (bridging streams) or a river. */
+  function carve(a, x0, y0, x1, y1, seed, salt, width, river, seg, bit) {
+    var dx = x1 - x0, dy = y1 - y0, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    var bend = ((Sim.hash4(seed, salt, 5, 993) % 1000) / 1000 - 0.5) * 5;
+    var cx = (x0 + x1) / 2 - dy / len * bend, cy = (y0 + y1) / 2 + dx / len * bend;
+    var px = x0, py = y0;
+    function mark(tx, ty) {
+      for (var oy = 0; oy < width; oy++) for (var ox = 0; ox < width; ox++) {
+        var mx = tx + ox, my = ty + oy;
+        if (mx < 0 || my < 0 || mx >= P || my >= P) continue;
+        var i = my * P + mx;
+        if (river) { if (a[i] !== T.ROAD && a[i] !== T.BRIDGE) a[i] = T.STREAM; }
+        else { a[i] = a[i] === T.STREAM || a[i] === T.BRIDGE ? T.BRIDGE : T.ROAD; if (seg) seg[i] |= bit; }
+      }
+    }
+    mark(px, py);
+    for (var t = 0.04; t <= 1.0001; t += 0.04) {
+      var u = 1 - t, fx = u * u * x0 + 2 * u * t * cx + t * t * x1, fy = u * u * y0 + 2 * u * t * cy + t * t * y1;
+      var tx = Math.max(0, Math.min(P - 1, Math.round(fx))), ty = Math.max(0, Math.min(P - 1, Math.round(fy)));
+      while (px !== tx || py !== ty) {
+        if (px !== tx && (py === ty || Math.abs(tx - px) >= Math.abs(ty - py))) px += tx > px ? 1 : -1;
+        else py += ty > py ? 1 : -1;
+        mark(px, py);
+      }
+    }
+    while (px !== x1 || py !== y1) { if (px !== x1) px += x1 > px ? 1 : -1; else py += y1 > py ? 1 : -1; mark(px, py); }
   }
 
   function staticTiles(s, pi) {
@@ -82,7 +124,12 @@
         case TER.DEEP: v = T.DEEP; break;
         case TER.SEA: v = T.SHALLOW; break;
         case TER.PLAINS: v = r < 0.025 ? T.TREE : r < 0.035 ? T.ROCK : n > 0.74 ? T.DGRASS : T.GRASS; break;
-        case TER.FOREST: v = (n > 0.42 && r < 0.55) || r < 0.08 ? (noise(seed, gx, gy, 7, 905) > 0.5 ? T.PINE : T.TREE) : T.DGRASS; break;
+        case TER.FOREST: {
+          var big = noise(seed, gx, gy, 16, 907), dense = big > 0.66, glade = big < 0.3;
+          var tree = glade ? r < 0.035 : dense ? (n > 0.3 && r < 0.72) || r < 0.15 : (n > 0.42 && r < 0.55) || r < 0.08;
+          v = tree ? (noise(seed, gx, gy, 7, 905) > 0.5 ? T.PINE : T.TREE) : glade ? T.GRASS : T.DGRASS;
+          break;
+        }
         case TER.HILLS: v = r < 0.09 ? T.ROCK : r < 0.12 ? T.PINE : n > 0.5 ? T.GRASS : T.DIRT; break;
         case TER.MOUNTAIN: v = (n > 0.38 && r < 0.6) || r < 0.14 ? T.ROCK : r < 0.3 ? T.SNOW : T.ROCKY; break;
         case TER.DESERT: v = r < 0.02 ? T.CACTUS : r < 0.03 ? T.ROCK : T.SAND; break;
@@ -99,35 +146,33 @@
       }
       a[ly * P + lx] = v;
     }
-    var ground = groundFor(t0);
-    // rivers: lanes at x/y = 2..3 joining the river network of neighbouring provinces
+    var ground = groundFor(t0), hubs = hubOf(s, pi), segs = segCache[pi] = new Uint8Array(P * P);
+    // rivers: winding two-tile streams from a source point to where the river crosses into each neighbour
     if (s.river[pi] && land) {
       var links = 0;
       for (k = 0; k < 4; k++) {
         var nb = NB[pi * 4 + k];
         if (nb < 0 || !(s.river[nb] || !isLandT(s.terrain[nb]))) continue;
         links++;
-        for (var q = 0; q < P; q++) for (var w = 2; w <= 3; w++) {
-          if (k === 0 && q <= 3) a[q * P + w] = T.STREAM;
-          if (k === 2 && q >= 2) a[q * P + w] = T.STREAM;
-          if (k === 3 && q <= 3) a[w * P + q] = T.STREAM;
-          if (k === 1 && q >= 2) a[w * P + q] = T.STREAM;
-        }
+        var ep = edgePoint(s, pi, k, 991);
+        carve(a, hubs.river[0], hubs.river[1], ep[0], ep[1], s.seed, pi * 4 + k + 77, 2, true);
       }
-      if (!links) for (ly = 2; ly <= 4; ly++) for (lx = 2; lx <= 4; lx++) a[ly * P + lx] = T.STREAM;
+      if (!links) for (ly = hubs.river[1] - 1; ly <= hubs.river[1] + 1; ly++) for (lx = hubs.river[0] - 1; lx <= hubs.river[0] + 1; lx++) a[ly * P + lx] = T.STREAM;
     }
     if (land) {
-      // clear the village green
-      for (ly = C - 2; ly <= C + 2; ly++) for (lx = C - 2; lx <= C + 2; lx++) {
+      // a village green round the hub
+      for (ly = hubs.y - 2; ly <= hubs.y + 2; ly++) for (lx = hubs.x - 2; lx <= hubs.x + 2; lx++) {
+        if (Math.abs(lx - hubs.x) + Math.abs(ly - hubs.y) > 3) continue;
         var cur = a[ly * P + lx];
         if (SOLID[cur] || (WATER[cur] && cur !== T.STREAM)) a[ly * P + lx] = ground;
       }
-      // trails to neighbouring land provinces
-      var west = NB[pi * 4 + 3], east = NB[pi * 4 + 1], north = NB[pi * 4], south = NB[pi * 4 + 2];
-      var x0 = west >= 0 && isLandT(s.terrain[west]) ? 0 : C, x1 = east >= 0 && isLandT(s.terrain[east]) ? P - 1 : C;
-      var y0 = north >= 0 && isLandT(s.terrain[north]) ? 0 : C, y1 = south >= 0 && isLandT(s.terrain[south]) ? P - 1 : C;
-      for (lx = x0; lx <= x1; lx++) a[C * P + lx] = a[C * P + lx] === T.STREAM ? T.BRIDGE : T.ROAD;
-      for (ly = y0; ly <= y1; ly++) a[ly * P + C] = a[ly * P + C] === T.STREAM ? T.BRIDGE : T.ROAD;
+      // paths that wander from the hub to each neighbouring land province (they always connect)
+      for (k = 0; k < 4; k++) {
+        var nn = NB[pi * 4 + k];
+        if (nn < 0 || !isLandT(s.terrain[nn])) continue;
+        var pp = edgePoint(s, pi, k, 990);
+        carve(a, hubs.x, hubs.y, pp[0], pp[1], s.seed, pi * 4 + k, 1, false, segs, 1 << k);
+      }
     }
     staticCache[pi] = a;
     return a;
@@ -168,11 +213,14 @@
     var c = s.owner[pi], pop = s.pop[pi], lx, ly, i;
     d.age = c >= 0 ? Sim.ageOf(s.cTech[c]) : 0;
     d.cap = isCapital(s, pi);
+    var hub = hubOf(s, pi), road = function (i) { return st[i] === T.ROAD || st[i] === T.BRIDGE; };
+    d.hub = hub;
     if (d.cap) {
+      // the castle: a square of walls (castles are square), with a gate wherever a road meets the wall
       for (ly = 1; ly < P - 1; ly++) for (lx = 1; lx < P - 1; lx++) {
         if (Math.max(Math.abs(lx - C), Math.abs(ly - C)) !== 5) continue;
         i = ly * P + lx;
-        if (lx === C || ly === C) deco[i] = D.GATE;
+        if (road(i)) deco[i] = D.GATE;
         else { deco[i] = D.WALL; solid[i] = 1; }
       }
       for (ly = C - 3; ly <= C - 2; ly++) for (lx = C + 1; lx <= C + 2; lx++) { i = ly * P + lx; deco[i] = D.KEEPPART; solid[i] = 1; }
@@ -180,18 +228,21 @@
     }
     var nh = houseCount(pop) + (d.cap ? 3 : 0);
     if (nh) {
+      // houses cluster along the road and round the green, a little ragged
       var cands = [];
       for (ly = 1; ly < P - 1; ly++) for (lx = 1; lx < P - 1; lx++) {
         i = ly * P + lx;
-        var dist = Math.max(Math.abs(lx - C), Math.abs(ly - C));
-        if (dist < 1 || dist > (d.cap ? 4 : 5) || deco[i] || SOLID[st[i]] || WATER[st[i]] || st[i] === T.ROAD || st[i] === T.BRIDGE) continue;
+        var ddx = lx - hub.x, ddy = ly - hub.y, dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist < 1.5 || dist > (d.cap ? 4.4 : 6) || deco[i] || SOLID[st[i]] || WATER[st[i]] || road(i)) continue;
         if (lx === C + 1 && ly === C - 1) continue; // where the ruler stands
-        cands.push({ i: i, lx: lx, ly: ly, h: Sim.hash4(s.seed, pi, i, 911) + dist * 0x1000000 });
+        var byRoad = (lx > 0 && road(i - 1)) || (lx < P - 1 && road(i + 1)) || (ly > 0 && road(i - P)) || (ly < P - 1 && road(i + P));
+        var score = dist + noise(s.seed, (pi % W) * P + lx, ((pi / W) | 0) * P + ly, 3, 913) * 2.2 - (byRoad ? 1.6 : 0);
+        cands.push({ i: i, lx: lx, ly: ly, h: score });
       }
       cands.sort(function (a, b) { return a.h - b.h; });
       for (k = 0; k < cands.length && d.houses.length < nh; k++) {
         var cd = cands[k];
-        // keep houses apart a little so lanes stay open
+        // keep a lane beside every house
         var crowded = d.houses.some(function (h) { return Math.abs(h.lx - cd.lx) <= 1 && Math.abs(h.ly - cd.ly) <= 1 && (h.lx === cd.lx || h.ly === cd.ly); });
         if (crowded) continue;
         deco[cd.i] = D.HOUSE; solid[cd.i] = 1;
@@ -199,15 +250,29 @@
       }
       var t0 = s.terrain[pi];
       if (t0 === TER.PLAINS || t0 === TER.HILLS || t0 === TER.FOREST) {
-        var nf = nh * 2, fields = [];
+        // fields in irregular plots around the outskirts
+        var want = nh * 2, made = 0, seeds = [];
         for (ly = 0; ly < P; ly++) for (lx = 0; lx < P; lx++) {
           i = ly * P + lx;
-          var fd = Math.max(Math.abs(lx - C), Math.abs(ly - C));
-          if (fd < 3 || deco[i] || (st[i] !== T.GRASS && st[i] !== T.DIRT && st[i] !== T.DGRASS)) continue;
-          fields.push({ i: i, h: Sim.hash4(s.seed, pi, i, 912) + fd * 0x2000000 });
+          var fdx = lx - hub.x, fdy = ly - hub.y, fd = Math.sqrt(fdx * fdx + fdy * fdy);
+          if (fd < 2.6 || fd > 7 || deco[i] || (st[i] !== T.GRASS && st[i] !== T.DIRT && st[i] !== T.DGRASS)) continue;
+          seeds.push({ i: i, h: Sim.hash4(s.seed, pi, i, 912) % 1000 + fd * 90 });
         }
-        fields.sort(function (a, b) { return a.h - b.h; });
-        for (k = 0; k < Math.min(nf, fields.length); k++) deco[fields[k].i] = s.starve[pi] ? D.DEADFIELD : D.FIELD;
+        seeds.sort(function (a, b) { return a.h - b.h; });
+        var fieldOK = function (j) { return j >= 0 && j < P * P && !deco[j] && (st[j] === T.GRASS || st[j] === T.DIRT || st[j] === T.DGRASS); };
+        for (k = 0; k < seeds.length && made < want; k++) {
+          var plot = [seeds[k].i], size = 2 + Sim.hash4(s.seed, pi, k, 914) % 4;
+          if (!fieldOK(plot[0])) continue;
+          for (var q = 0; q < plot.length && plot.length < size; q++) {
+            var c0 = plot[q], dirs = [1, -1, P, -P];
+            for (var dd = 0; dd < 4 && plot.length < size; dd++) {
+              var nj = c0 + dirs[(dd + Sim.hash4(s.seed, c0, k, 915)) % 4];
+              if ((dirs[dd] === 1 && nj % P === 0) || (dirs[dd] === -1 && c0 % P === 0)) continue;
+              if (fieldOK(nj) && plot.indexOf(nj) < 0) plot.push(nj);
+            }
+          }
+          plot.forEach(function (j) { if (fieldOK(j)) { deco[j] = s.starve[pi] ? D.DEADFIELD : D.FIELD; made++; } });
+        }
       }
     }
     return d;
@@ -423,12 +488,14 @@
     g.fillStyle = sig ? civCSS(sig) : '#c33'; g.fillRect(x0 + w / 2 + 1, y0 - 14, 14, 9);
   }
 
-  function clearCaches() { staticCache = {}; dynCache = {}; renderCache = {}; renderOrder = []; }
+  function clearCaches() { staticCache = {}; segCache = {}; dynCache = {}; renderCache = {}; renderOrder = []; }
 
   root.Local = {
     P: P, TS: TS, C: C, LW: LW, LH: LH, T: T, D: D, SOLID: SOLID, WATER: WATER,
     staticTiles: staticTiles, getDyn: getDyn, isSolid: isSolid, tileAt: tileAt, speedAt: speedAt, isWaterAt: isWaterAt,
     blocksShot: blocksShot, renderProvince: renderProvince, clearCaches: clearCaches, civRGB: civRGB, civCSS: civCSS,
-    houseCount: houseCount, isCapital: isCapital, isLandT: isLandT
+    houseCount: houseCount, isCapital: isCapital, isLandT: isLandT,
+    groundFor: groundFor, lookTerrain: lookTerrain, sigAt: sigAt, noise: noise, hubOf: hubOf,
+    pathSegments: function (s, pi) { staticTiles(s, pi); return segCache[pi]; }
   };
 }(this));

@@ -242,10 +242,22 @@ Strategically (engine-only replays across worlds 1–12, trying each plan every
 muster + canal + teaching in 3, both together in 7, and two such campaigns
 30 years apart in 11. World 11 resisted everything tried.
 
+## Graphics
+
+The world is drawn in 16-bit pixel art by default (F2 or the pause menu switches to the
+classic style). Province layouts avoid the grid: terrain edges wander, rivers meander,
+footpaths curve from each village green to fixed crossing points shared with the
+neighbours, so every province stays connected. The footpath network never moves, but
+its grade comes from the simulation: dirt roads in settled land, cobbled highways from
+each capital to its towns of 300+ (paved from the Renaissance), rerouted when a
+capital moves. Borders are banners where roads cross; seasons recolour the land
+(autumn leaves, winter snow and bare trees), with chimney smoke, birds, butterflies and
+sparkling water.
+
 ## Controls
 
 WASD move (you face the way you walk) · G (hold) rewind 2–10 s · J sword · K bow (hold to strafe around the
-locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · B ride · M travel map · V compare histories · P pause/save · T Chronoscope · L journal · H help.
+locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · B ride · M travel map · V compare histories · P pause/save · T Chronoscope · L journal · H help · F2 16-bit / classic graphics.
 Attacks lock on to the nearest foe in front of you. Dialogs: 1–9 / Enter / Esc.
 Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where you left, Home, Enter to travel.
 
@@ -255,7 +267,8 @@ Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where y
 index.html, css/game.css
 guide.html, guide/       the player's guide and its screenshots
 js/engine/   sim.js, timeline.js, story.js, oracle.js   (from Chronoscope, unchanged)
-js/rpg/local.js    provinces → walkable tiles, settlements, rendering cache
+js/rpg/local.js    provinces → walkable tiles: terrain, rivers, footpaths, settlements (classic renderer)
+js/rpg/pixel.js    16-bit renderer: tiles, road grades and highways, seasons, sprites, ambient life
 js/rpg/quests.js   quest generation, escorts, choices, echoes; quests → deeds
 js/rpg/gear.js     era weapons, armour, ammunition, smiths, suspicion
 js/rpg/game.js     player, combat, AI (flow-field pathfinding), time, story, HUD, Chronoscope
