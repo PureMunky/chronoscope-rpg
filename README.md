@@ -242,10 +242,23 @@ Strategically (engine-only replays across worlds 1–12, trying each plan every
 muster + canal + teaching in 3, both together in 7, and two such campaigns
 30 years apart in 11. World 11 resisted everything tried.
 
+## Village life
+
+Villagers (js/rpg/life.js) have trades and a working day driven by the timeline: each
+province's outlook is read from the simulation now, a year and three years ahead.
+Houses that will exist next year are raised now on their exact tiles (timber hauled,
+frame, roof); families pack up where a village will shrink; farmers hoe, reap and carry
+sheaves, warn of failing soil, and glean dead fields in a famine; a coming age brings
+rebuilding; plague brings the sick to their doors and neighbours with water; war brings
+drilling on the green, and a coming conquest brings stakes on the enemy's side. Strong
+solidarity brings festivals, weak brings quarrels. Overheard talk is about the same
+things, and at the turn of the year you hear what came of it. Villagers path round
+houses and trees, wave or look wary depending on your dress, and are part of the short
+rewind's snapshots.
+
 ## Graphics
 
-The world is drawn in 16-bit pixel art by default (F2 or the pause menu switches to the
-classic style). Province layouts avoid the grid: terrain edges wander, rivers meander,
+The world is drawn in 16-bit pixel art. Province layouts avoid the grid: terrain edges wander, rivers meander,
 footpaths curve from each village green to fixed crossing points shared with the
 neighbours, so every province stays connected. The footpath network never moves, but
 its grade comes from the simulation: dirt roads in settled land, cobbled highways from
@@ -257,7 +270,7 @@ sparkling water.
 ## Controls
 
 WASD move (you face the way you walk) · G (hold) rewind 2–10 s · J sword · K bow (hold to strafe around the
-locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · B ride · M travel map · V compare histories · P pause/save · T Chronoscope · L journal · H help · F2 16-bit / classic graphics.
+locked target) · Space roll · Q potion · E talk · R rest · I gear · U conceal · B ride · M travel map · V compare histories · P pause/save · T Chronoscope · L journal · H help.
 Attacks lock on to the nearest foe in front of you. Dialogs: 1–9 / Enter / Esc.
 Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where you left, Home, Enter to travel.
 
@@ -267,10 +280,11 @@ Chronoscope: , . (Shift ×10), PgUp/PgDn, [ ] threads and quest years, B where y
 index.html, css/game.css
 guide.html, guide/       the player's guide and its screenshots
 js/engine/   sim.js, timeline.js, story.js, oracle.js   (from Chronoscope, unchanged)
-js/rpg/local.js    provinces → walkable tiles: terrain, rivers, footpaths, settlements (classic renderer)
+js/rpg/local.js    provinces → walkable tiles: terrain, rivers, footpaths, settlements, collision
 js/rpg/pixel.js    16-bit renderer: tiles, road grades and highways, seasons, sprites, ambient life
 js/rpg/quests.js   quest generation, escorts, choices, echoes; quests → deeds
 js/rpg/gear.js     era weapons, armour, ammunition, smiths, suspicion
+js/rpg/life.js     village life: trades, work driven by the timeline's future, talk, rewind snapshots
 js/rpg/game.js     player, combat, AI (flow-field pathfinding), time, story, HUD, Chronoscope
 ```
 

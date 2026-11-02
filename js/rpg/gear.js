@@ -385,7 +385,7 @@
 
   root.Gear = {
     AGE_NAMES: AGE_NAMES, AMMO: AMMO, SUSPECT: SUSPECT, HUNT: HUNT, item: item, starter: starter, ammoOf: ammoOf, useAmmo: useAmmo,
-    localAge: localAge, anachronism: anachronism, outOfTime: outOfTime, toggleConceal: toggleConceal, empty: empty, update: update, onShot: onShot, suspicionLabel: suspicionLabel, suspected: suspected,
+    SUSPECT: SUSPECT, HUNT: HUNT, localAge: localAge, anachronism: anachronism, outOfTime: outOfTime, toggleConceal: toggleConceal, empty: empty, update: update, onShot: onShot, suspicionLabel: suspicionLabel, suspected: suspected,
     restock: restock, lower: lower, smithTalk: smithTalk, renderInventory: renderInventory, invAction: invAction, dress: dress, dressInfo: dressInfo, refuses: refuses, dropFor: dropFor, pickUp: pickUp, price: price
   };
 }(this));

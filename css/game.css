@@ -213,7 +213,7 @@ h1 span { display: block; font-size: 16px; letter-spacing: 0.4em; text-transform
 #travel-map { display: block; width: 100%; max-width: 640px; aspect-ratio: 16 / 10; border-radius: 8px; image-rendering: pixelated; border: 1px solid var(--line); }
 
 /* ---------------------------------------------------------------------------
-   16-bit theme: console-style windows to match the pixel world (F2 toggles)
+   16-bit theme: console-style windows to match the pixel world
    --------------------------------------------------------------------------- */
 body.px { --glass: linear-gradient(180deg, rgba(40, 56, 132, 0.92), rgba(18, 24, 72, 0.92)); --solid: linear-gradient(180deg, #2c3c8c, #141a4a); --line: #0a0c22; }
 body.px .panel-glass, body.px .panel-solid, body.px #tracker .obj, body.px .toast {

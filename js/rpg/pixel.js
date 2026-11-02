@@ -173,6 +173,22 @@
     var lx = (wx & 3) - ax, ly = (wy & 3) - ay;
     return ly >= 0 && ly <= 1 && lx >= 0 && lx <= 2 ? ly * 3 + lx : -1;
   }
+  // The ground of a province is drawn once in the base palette, then recoloured per season (a palette
+  // swap). A few pixels carry a flag for details that are more than a colour change.
+  var GFLAG = 0, F_COBSNOW = 1, F_ROCKY = 2, F_FIELD = 3, F_FLOWER_Y = 4, F_FLOWER_P = 5, F_FOAM = 6;
+  function pack(c) { return (0xff000000 | (c[2] << 16) | (c[1] << 8) | c[0]) >>> 0; }
+  var swapMaps = {}, rockSnow = null;
+  function seasonSwap(sn) {
+    if (!sn) return null;
+    if (swapMaps[sn]) return swapMaps[sn];
+    var m = new Map(), over = SEASONAL[sn];
+    Object.keys(over).forEach(function (k) { R[k].forEach(function (c, i) { m.set(pack(c), pack(over[k][i])); }); });
+    return (swapMaps[sn] = m);
+  }
+  function rockyToSnow() {
+    if (!rockSnow) { rockSnow = new Map(); R.rocky.forEach(function (c, i) { rockSnow.set(pack(c), pack(R.snow[i])); }); }
+    return rockSnow;
+  }
   function groundPixel(m, wx, wy, seed) {
     var n = L.noise(seed, wx, wy, 14, 951);
     switch (m) {
@@ -181,13 +197,13 @@
         if (gd === 0 || gd === 2) return RS.grass[3];
         if (gd === 1) return RS.grass[4];
         if (gd === 4) return RS.grass[1];
-        if (SEASON === 0) { var fl = cellDetail(seed, wx, wy, 957, 0.012); if (fl === 1) return hrand(seed, wx >> 2, wy >> 2, 958) > 0.5 ? [236, 214, 90] : [236, 150, 190]; }
+        var fl = cellDetail(seed, wx, wy, 957, 0.012); if (fl === 1) GFLAG = hrand(seed, wx >> 2, wy >> 2, 958) > 0.5 ? F_FLOWER_Y : F_FLOWER_P;   // spring only
         return flat(RS.grass, 0.5, n, wx, wy, 0.38);
       }
       case 'dgrass': { var dd = cellDetail(seed, wx, wy, 954, 0.14); if (dd === 1) return RS.dgrass[3]; if (dd === 4) return RS.dgrass[0]; return flat(RS.dgrass, 0.5, n, wx, wy, 0.4); }
       case 'dirt': { var pd = cellDetail(seed, wx, wy, 955, 0.08); if (pd === 1) return RS.dirt[0]; if (pd === 0) return RS.dirt[3]; return flat(RS.dirt, 0.55, n, wx, wy, 0.35); }
       case 'sand': { var sd = cellDetail(seed, wx, wy, 956, 0.06); if (sd === 4) return R.sand[1]; return flat(R.sand, 0.62, n, wx, wy, 0.3); }
-      case 'rocky': { var rd = cellDetail(seed, wx, wy, 959, 0.12); if (rd === 1 || rd === 4) return R.rocky[0]; if (rd === 0) return R.rocky[3]; return flat(SEASON === 2 ? R.snow : R.rocky, 0.5, n, wx, wy, 0.35); }
+      case 'rocky': { var rd = cellDetail(seed, wx, wy, 959, 0.12); if (rd === 1 || rd === 4) return R.rocky[0]; if (rd === 0) return R.rocky[3]; GFLAG = F_ROCKY; return flat(R.rocky, 0.5, n, wx, wy, 0.35); }
       case 'snow': return flat(R.snow, 0.68, n, wx, wy, 0.3);
       case 'path': {
         // a worn trail: earth showing through the grass
@@ -200,7 +216,8 @@
         var row = wy >> 2, sx = (wx + (row & 1) * 2) & 3, sy = wy & 3;
         if (sx === 3 || sy === 3) return R.cobble[0];
         var lit = sx === 0 && sy === 0 ? 3 : hrand(seed, (wx + (row & 1) * 2) >> 2, row, 965) > 0.5 ? 2 : 1;
-        return SEASON === 2 && hrand(seed, wx, wy, 966) > 0.6 ? R.snow[2] : R.cobble[lit];
+        if (hrand(seed, wx, wy, 966) > 0.6) GFLAG = F_COBSNOW;
+        return R.cobble[lit];
       }
       case 'paved': {
         var px2 = (wx & 7), py2 = (wy & 7);
@@ -434,26 +451,33 @@
   // ---------------------------------------------------------------------------
   // A province as one small canvas
   // ---------------------------------------------------------------------------
-  var provCache = {}, provOrder = [], budget = 99;
-  function beginFrame() { budget = 4; }
-  function provKey(s, pi, ver, dyn) {
+  var provCache = {}, provOrder = [], deadline = Infinity;
+  // repaint stale provinces for at most a few milliseconds a frame (the stale picture shows meanwhile)
+  var frameNo = 0;
+  function beginFrame() { deadline = performance.now() + 4; frameNo++; }
+  function baseKey(s, pi, ver, dyn) {
     var c = s.owner[pi];
-    return dyn.key + '|' + SEASON + '|' + (c >= 0 && s.pop[pi] > 0 ? highways(s, ver)[pi] + ':' + (s.cCap[c] === pi ? 1 : 0) : 'w');
+    return dyn.key + '|' + (c >= 0 && s.pop[pi] > 0 ? highways(s, ver)[pi] + ':' + (s.cCap[c] === pi ? 1 : 0) : 'w');
   }
-  function renderProvince(s, pi, ver) {
-    curVer = ver;
-    var dyn = L.getDyn(s, pi, ver), key = provKey(s, pi, ver, dyn), rc = provCache[pi];
-    if (rc && rc.key === key) return rc.canvas;
-    // a few repaints a frame (seasons change everything at once); show the old picture meanwhile
-    if (rc && budget <= 0) return rc.canvas;
-    budget--;
-    var cv = rc ? rc.canvas : document.createElement('canvas');
-    cv.width = PW; cv.height = PW + PAD;
-    var g = cv.getContext('2d'), seed = s.seed, px0 = (pi % W) * P, py0 = ((pi / W) | 0) * P;
-    g.clearRect(0, 0, PW, PW + PAD);
-    var img = g.createImageData(PW, PW + PAD), buf = new Uint32Array(img.data.buffer);
-    var st = L.staticTiles(s, pi), lx, ly, x, y;
-    for (ly = 0; ly < P; ly++) for (lx = 0; lx < P; lx++) {
+  function provKey(s, pi, ver, dyn) { return baseKey(s, pi, ver, dyn) + '|' + SEASON; }
+  // Building a province's ground is the slow part, so it can be done a row of tiles at a time, across frames.
+  var jobs = {}, nJobs = 0;
+  function jobFor(pi, bk) {
+    var j = jobs[pi];
+    if (!j || j.bk !== bk) {
+      if (!j && ++nJobs > 40) { jobs = {}; nJobs = 1; }
+      j = jobs[pi] = { bk: bk, row: 0, base: new Uint32Array(PW * PW), flag: new Uint8Array(PW * PW) };
+    }
+    return j;
+  }
+  /** Build rows of the ground until done (true) or until the clock passes `until` (false: resume later). */
+  function buildBase(s, pi, dyn, j, until) {
+    var base = j.base, flag = j.flag, seed = s.seed, px0 = (pi % W) * P, py0 = ((pi / W) | 0) * P, lx, ly, x, y, first = j.row;
+    var keepRS = RS, keepSN = SEASON; RS = R; SEASON = 0;   // always in the base palette
+    try {
+    for (ly = first; ly < P; ly++) {
+      if (ly > first && performance.now() > until) { j.row = ly; return false; }
+      for (lx = 0; lx < P; lx++) {
       var tx = px0 + lx, ty = py0 + ly, m = groundMat(s, tx, ty);
       var nb = [groundMat(s, tx, ty - 1), groundMat(s, tx + 1, ty), groundMat(s, tx, ty + 1), groundMat(s, tx - 1, ty)];
       // diagonals, for rounding off square corners: NE, SE, SW, NW
@@ -485,17 +509,60 @@
             if (ux > 0 && uy > 0 && ux * ux + uy * uy > rr * rr) { mm = n2; break; }
           }
         }
-        var col = foam && isWaterMat(mm) ? (SEASON === 2 ? R.snow[3] : R.foam[(wx + wy) & 1]) : groundPixel(mm, wx, wy, seed);
-        if (field && mm === m) {
-          var row = (y + (lx & 1) * 2) % 4, ripe = (lx + ly) & 1;
-          if (deco === D.DEADFIELD) col = row < 2 ? R.dead[1] : R.dead[0];
-          else if (SEASON === 1) col = row === 0 ? RS.dirt[1] : (x + y) % 3 === 0 ? R.wheat[2] : R.wheat[ripe ? 1 : 0];   // harvest stubble
-          else col = row === 0 ? RS.dirt[1] : row === 1 ? RS.dirt[2] : ripe ? RS.wheat[(x + y) % 3 === 0 ? 2 : 1] : RS.crop[(x + y) % 3 === 0 ? 2 : 1];
-          if (x === 0 || x === PT - 1 || y === 0) col = RS.dirt[0];
-        }
-        buf[(y + ly * PT + PAD) * PW + x + lx * PT] = 0xff000000 | (col[2] << 16) | (col[1] << 8) | col[0];
+        GFLAG = 0;
+        var col = foam && isWaterMat(mm) ? (GFLAG = F_FOAM, R.foam[(wx + wy) & 1]) : groundPixel(mm, wx, wy, seed);
+        if (field && mm === m) GFLAG = F_FIELD;
+        var bi = (y + ly * PT) * PW + x + lx * PT;
+        base[bi] = pack(col); flag[bi] = GFLAG;
+      }
       }
     }
+    } finally { RS = keepRS; SEASON = keepSN; }
+    j.row = P;
+    return true;
+  }
+  function paintGround(buf, base, flag, dyn) {
+    var sw = seasonSwap(SEASON), win = SEASON === 2, snow2 = pack(R.snow[2]), snow3 = pack(R.snow[3]), rs = win ? rockyToSnow() : null;
+    var fy = pack([236, 214, 90]), fp = pack([236, 150, 190]);
+    for (var i = 0; i < PW * PW; i++) {
+      var c = base[i], f = flag[i], o;
+      if (f === 0) o = sw ? (sw.get(c) || c) : c;
+      else if (f === F_COBSNOW) o = win ? snow2 : c;
+      else if (f === F_ROCKY) o = win ? rs.get(c) || c : c;
+      else if (f === F_FOAM) o = win ? snow3 : c;
+      else if (f === F_FLOWER_Y || f === F_FLOWER_P) o = SEASON === 0 ? (f === F_FLOWER_Y ? fy : fp) : sw ? (sw.get(c) || c) : c;
+      else {
+        // fields: rows of crops, stubble after harvest, snow in winter
+        var x = i % PW, y = (i / PW) | 0, lx = (x / PT) | 0, ly = (y / PT) | 0, tx = x % PT, ty = y % PT;
+        var row = (ty + (lx & 1) * 2) % 4, ripe = (lx + ly) & 1, deco = dyn.deco[ly * P + lx], col;
+        if (deco === D.DEADFIELD) col = row < 2 ? R.dead[1] : R.dead[0];
+        else if (SEASON === 1) col = row === 0 ? RS.dirt[1] : (tx + ty) % 3 === 0 ? R.wheat[2] : R.wheat[ripe ? 1 : 0];   // harvest stubble
+        else col = row === 0 ? RS.dirt[1] : row === 1 ? RS.dirt[2] : ripe ? RS.wheat[(tx + ty) % 3 === 0 ? 2 : 1] : RS.crop[(tx + ty) % 3 === 0 ? 2 : 1];
+        if (tx === 0 || tx === PT - 1 || ty === 0) col = RS.dirt[0];
+        o = pack(col);
+      }
+      buf[i + PAD * PW] = o;
+    }
+  }
+  function renderProvince(s, pi, ver) {
+    curVer = ver;
+    var dyn = L.getDyn(s, pi, ver), key = provKey(s, pi, ver, dyn), rc = provCache[pi];
+    if (rc && rc.key === key) { rc.used = frameNo; return rc.canvas; }
+    // out of time this frame: show the old picture, repaint next frame
+    if (rc && performance.now() > deadline) { rc.used = frameNo; return rc.canvas; }
+    var cv = rc ? rc.canvas : document.createElement('canvas');
+    cv.width = PW; cv.height = PW + PAD;
+    var g = cv.getContext('2d'), seed = s.seed, px0 = (pi % W) * P, py0 = ((pi / W) | 0) * P;
+    g.clearRect(0, 0, PW, PW + PAD);
+    var img = g.createImageData(PW, PW + PAD), buf = new Uint32Array(img.data.buffer);
+    var st = L.staticTiles(s, pi), lx, ly, x, y, bk = baseKey(s, pi, ver, dyn);
+    if (!rc || rc.baseKey !== bk) {
+      var b = jobFor(pi, bk);
+      buildBase(s, pi, dyn, b, Infinity);
+      delete jobs[pi]; nJobs--;
+      if (rc) { rc.base = b.base; rc.flag = b.flag; rc.baseKey = bk; } else rc = { base: b.base, flag: b.flag, baseKey: bk, canvas: cv, key: '' };
+    }
+    paintGround(buf, rc.base, rc.flag, dyn);
     g.putImageData(img, 0, 0);
     // things on the ground, back to front, each nudged off the grid
     for (ly = 0; ly < P; ly++) for (lx = 0; lx < P; lx++) {
@@ -533,15 +600,33 @@
         }
       }
     }
-    if (!rc) {
-      provCache[pi] = rc = { canvas: cv, key: '' };
+    if (!provCache[pi]) {
+      provCache[pi] = rc;
       provOrder.push(pi);
-      if (provOrder.length > 90) { var old = provOrder.shift(); delete provCache[old]; }
+      if (provOrder.length > CACHE_MAX) evictOne();
     }
-    rc.key = key;
+    rc.key = key; rc.used = frameNo;
     return cv;
   }
-  function clearCaches() { provCache = {}; provOrder = []; HW.ver = -1; }
+  // forget the province least recently drawn (never one drawn this frame)
+  var CACHE_MAX = 150;
+  function evictOne() {
+    var bi = -1, bt = Infinity;
+    for (var k = 0; k < provOrder.length; k++) { var e = provCache[provOrder[k]]; if (e.used < bt && e.used < frameNo) { bt = e.used; bi = k; } }
+    if (bi >= 0) { delete provCache[provOrder[bi]]; provOrder.splice(bi, 1); }
+  }
+  /** Get a province ready before it scrolls into view, if this frame has time to spare. */
+  function prefetch(s, pi, ver) {
+    var rc = provCache[pi];
+    if (performance.now() > deadline) { if (rc) rc.used = Math.max(rc.used, frameNo - 1); return; }
+    var dyn = L.getDyn(s, pi, ver), bk = baseKey(s, pi, ver, dyn);
+    if (rc) { rc.used = Math.max(rc.used, frameNo - 1); if (rc.key === bk + '|' + SEASON) return; }
+    if (!rc || rc.baseKey !== bk) { curVer = ver; if (!buildBase(s, pi, dyn, jobFor(pi, bk), deadline)) return; }
+    if (performance.now() > deadline) return;
+    renderProvince(s, pi, ver);
+    provCache[pi].used = frameNo - 1;
+  }
+  function clearCaches() { provCache = {}; provOrder = []; jobs = {}; nJobs = 0; HW.ver = -1; }
 
   // ---------------------------------------------------------------------------
   // Characters: 16x24 sprite sheets built from parts
@@ -920,8 +1005,109 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Village work: tools in hand, loads carried, little speech bubbles, building sites, stakes
+  // ---------------------------------------------------------------------------
+  /** How much a worker's body dips with the stroke (pixels). */
+  function lifeBob(anim, t) {
+    switch (anim) {
+      case 'hoe': case 'chop': case 'dig': return ((t * 1.5) % 1) > 0.55 ? 1 : 0;
+      case 'hammer': return ((t * 2.4) % 1) > 0.6 ? 1 : 0;
+      case 'gather': case 'reap': return 1 + (((t * 1.2) % 1) > 0.5 ? 1 : 0);
+      case 'draw': return 1;
+      case 'dance': return -Math.round(Math.abs(Math.sin(t * 5)) * 2);
+      case 'talk': return Math.sin(t * 9) > 0.85 ? -1 : 0;
+      case 'sick': return 1;
+      default: return 0;
+    }
+  }
+  function drawTool(g, anim, row, x, y, t) {
+    if (!anim) return;
+    var X = Math.round(x), Y = Math.round(y), side = row === 1 ? -1 : row === 3 ? 1 : row === 0 ? 1 : -1;
+    var hx = X + (row === 0 ? 5 : row === 2 ? -5 : side * 5), hy = Y - 9, wood = css(R.wood[2]), steel = css(R.stone[4]), ink = css(R.outline);
+    var swing = function (rate, up, down) { var ph = (t * rate) % 1; return ph < 0.55 ? up + (down - up) * (ph / 0.55) * 0.15 : up + (down - up) * Math.min(1, (ph - 0.55) / 0.15); };
+    var tool = function (ang, len, head) {
+      var ex = hx + Math.cos(ang) * len * side, ey = hy + Math.sin(ang) * len;
+      line(g, hx + 1, hy + 1, ex + 1, ey + 1, ink);
+      line(g, hx, hy, ex, ey, wood);
+      head(Math.round(ex), Math.round(ey));
+      g.fillStyle = '#e0a878'; g.fillRect(Math.round(hx), Math.round(hy), 1, 1);   // the hand
+    };
+    var f = function (c, a, b, w, h) { g.fillStyle = c; g.fillRect(a, b, w || 1, h || 1); };
+    switch (anim) {
+      case 'hoe': tool(swing(1.5, -1.9, 0.6), 11, function (ex, ey) { f(ink, ex - 2, ey - 1, 5, 3); f(steel, ex - 1, ey, 3, 1); f(steel, ex + side, ey + 1, 1, 1); }); break;
+      case 'dig': tool(swing(1.5, -1.6, 1.0), 10, function (ex, ey) { f(ink, ex - 2, ey - 1, 5, 4); f(steel, ex - 1, ey, 3, 2); }); break;
+      case 'chop': tool(swing(1.4, -2.2, 0.2), 9, function (ex, ey) { f(ink, ex - 1, ey - 2, 4, 5); f(steel, ex, ey - 1, 2, 3); }); break;
+      case 'hammer': tool(swing(2.4, -1.8, 0.3), 6, function (ex, ey) { f(ink, ex - 2, ey - 2, 5, 4); f(css(R.stone[3]), ex - 1, ey - 1, 3, 2); }); break;
+      case 'reap': tool(swing(1.2, -0.6, 0.9), 5, function (ex, ey) { f(ink, ex - 1, ey - 1, 3, 3); [[0, 0], [1, 1], [2, 1], [3, 0], [4, -1]].forEach(function (q) { f(steel, ex + side * q[0], ey + q[1], 1, 1); }); }); break;
+      case 'sweep': { var ph = Math.sin(t * 5) * 0.45; tool(1.2 + ph, 11, function (ex, ey) { f(ink, ex - 3, ey - 1, 7, 4); f(css(R.thatch[2]), ex - 2, ey, 5, 2); }); break; }
+      case 'drill': { var th = ((t * 1.1) % 1) < 0.25 ? 3 : 0, sx0 = hx - side * 6 + side * th; f(ink, Math.min(sx0, sx0 + side * 15) - 1, hy, 17, 3); line(g, sx0, hy + 1, sx0 + side * 15, hy + 1, wood); f(steel, sx0 + side * 15 - (side < 0 ? 1 : 0), hy, 2, 3); break; }
+      case 'draw': f(css(R.stone[1]), hx - 1 + side * 2, Y - 3, 4, 3); f(css(R.shallow[2]), hx + side * 2, Y - 3, 2, 1); break;
+      case 'gather': f(css(R.wood[2]), hx - 1, Y - 4, 4, 3); f('#c03040', hx, Y - 5, 1, 1); f('#7020a0', hx + 2, Y - 5, 1, 1); break;
+      case 'wave': { var up = Math.sin(t * 14) > 0; f(css(R.outline), hx + side * 1, Y - 22 - (up ? 1 : 0), 2, 3); f('#e8b890', hx + side * 1, Y - 22 - (up ? 1 : 0), 2, 2); break; }
+    }
+  }
+  function drawCarry(g, item, x, y) {
+    if (!item) return;
+    var X = Math.round(x), Y = Math.round(y) - 26, f = function (c, a, b, w, h) { g.fillStyle = typeof c === 'string' ? c : css(c); g.fillRect(X + a, Y + b, w || 1, h || 1); };
+    switch (item) {
+      case 'log': f(R.outline, -5, -1, 11, 4); f(R.wood[2], -4, 0, 9, 2); f(R.wood[3], -4, 0, 9, 1); f(R.thatch[2], -5, 0, 1, 2); f(R.thatch[2], 5, 0, 1, 2); break;
+      case 'sheaf': f(R.outline, -3, -4, 6, 7); f(R.wheat[1], -2, -3, 4, 5); f(R.wheat[2], -2, -3, 1, 4); f(R.wood[1], -2, 0, 4, 1); break;
+      case 'bucket': f(R.outline, 3, 14, 5, 5); f(R.stone[2], 4, 15, 3, 3); f(R.shallow[3], 4, 15, 3, 1); break;
+      case 'basket': f(R.outline, 3, 14, 5, 4); f(R.wood[2], 4, 15, 3, 2); f('#c03040', 4, 14, 1, 1); f('#7020a0', 6, 14, 1, 1); break;
+      case 'bundle': f(R.outline, -4, 7, 4, 6); f([170, 150, 120], -3, 8, 2, 4); break;
+    }
+  }
+  var BUB = {
+    dots: ['.....', '.....', 'x.x.x', '.....', '.....'],
+    bang: ['..x..', '..x..', '..x..', '.....', '..x..'],
+    ask: ['.xxx.', '...x.', '..x..', '.....', '..x..'],
+    note: ['..xx.', '..x.x', '..x..', 'xxx..', 'xx...'],
+    heart: ['.x.x.', 'xxxxx', 'xxxxx', '.xxx.', '..x..'],
+    angry: ['x.x.x', '.x.x.', 'x.x.x', '.....', '.....'],
+    cough: ['.....', '.x...', 'x.x.x', '...x.', '.....'],
+    wave: ['.x.x.', '.xxxx', 'xxxx.', '.xxx.', '..x..']
+  };
+  var BUBCOL = { dots: '#3a3448', bang: '#d83a2a', ask: '#2a6ad8', note: '#2a8a4a', heart: '#e04a7a', angry: '#d83a2a', cough: '#7a8a6a', wave: '#c8902a' };
+  function drawBubble(g, x, y, icon) {
+    var pat = BUB[icon];
+    if (!pat) return;
+    var X = Math.round(x) - 4, Y = Math.round(y) - 9;
+    g.fillStyle = css(R.outline); g.fillRect(X, Y + 1, 9, 7); g.fillRect(X + 1, Y, 7, 9); g.fillRect(X + 3, Y + 9, 2, 1);
+    g.fillStyle = '#fbf8f0'; g.fillRect(X + 1, Y + 1, 7, 7); g.fillRect(X + 3, Y + 8, 1, 1);
+    g.fillStyle = BUBCOL[icon];
+    for (var r = 0; r < 5; r++) for (var c = 0; c < 5; c++) if (pat[r][c] === 'x') g.fillRect(X + 2 + c, Y + 2 + r, 1, 1);
+  }
+  /** A house going up: stakes and a log pile, then a frame, then the roof going on. */
+  function drawSite(g, x, y, prog) {
+    var X = Math.round(x) - 8, Y = Math.round(y) + 8, wood = R.wood, f = function (c, a, b, w, h) { g.fillStyle = css(c); g.fillRect(X + a, Y + b, w || 1, h || 1); };
+    shadow(g, x + 2, y + 8, 7);
+    // the pile of timber shrinks as it goes up
+    var pile = Math.max(0, 3 - Math.floor(prog * 4));
+    for (var k = 0; k < pile; k++) { f(R.outline, 9, -3 - k * 2, 7, 3); f(wood[2], 10, -2 - k * 2, 5, 1); f(R.thatch[2], 15, -2 - k * 2, 1, 1); }
+    // corner posts
+    var ph = prog < 0.25 ? 4 : prog < 0.5 ? 9 : 13;
+    [1, 13].forEach(function (px) { f(R.outline, px - 1, -ph - 1, 3, ph + 1); f(wood[1], px, -ph, 1, ph); });
+    if (prog >= 0.25) { [5, 9].forEach(function (px) { f(wood[1], px, -ph, 1, ph); }); }
+    if (prog >= 0.5) { f(R.outline, 0, -ph - 1, 15, 3); f(wood[2], 1, -ph, 13, 1); f(wood[1], 1, -Math.round(ph / 2), 13, 1); }
+    if (prog >= 0.7) {
+      // rafters, then thatch climbing them
+      for (var r = 0; r < 7; r++) { f(wood[0], 1 + r, -ph - 1 - r, 1, 1); f(wood[0], 13 - r, -ph - 1 - r, 1, 1); }
+      var rows = Math.floor((prog - 0.7) / 0.3 * 7);
+      for (var q = 0; q < rows; q++) f(R.thatch[q % 2 ? 1 : 2], 1 + q, -ph - 1 - q, 13 - q * 2, 1);
+    }
+  }
+  function drawStake(g, x, y) {
+    var X = Math.round(x), Y = Math.round(y) + 6;
+    g.fillStyle = css(R.outline); g.fillRect(X - 2, Y - 11, 4, 12);
+    g.fillStyle = css(R.wood[2]); g.fillRect(X - 1, Y - 9, 2, 9);
+    g.fillStyle = css(R.wood[3]); g.fillRect(X - 1, Y - 10, 1, 1);
+    g.fillStyle = css(R.wood[1]); g.fillRect(X - 3, Y, 6, 1);
+  }
+
+  // ---------------------------------------------------------------------------
   // Life: water sparkles, chimney smoke, birds, butterflies, leaves, snow
   // ---------------------------------------------------------------------------
+  var flock = null;
   function ambient(g, o) {
     var s = o.s, t = o.time, box = o.box, boy = o.boy, bw = o.bw, bh = o.bh;
     var tx0 = Math.floor(-box / PT) - 1, tx1 = tx0 + Math.ceil(bw / PT) + 2, ty0 = Math.floor(-boy / PT) - 1, ty1 = ty0 + Math.ceil(bh / PT) + 2;
@@ -955,43 +1141,52 @@
         }
       }
     }
-    // weather
+    // Everything below lives in the world, not on the screen: walk past it and it stays behind.
+    // Snow and leaves are a field that repeats every FIELD pixels, so each flake drifts on seamlessly.
+    var FIELD = 384, wx0 = -box, wy0 = -boy;
+    function field(n, salt, vx, vy, draw) {
+      for (var i = 0; i < n; i++) {
+        var hx = Sim.hash4(salt, i, 1, 991), hy = Sim.hash4(salt, i, 2, 991), sp = 0.7 + (hx % 60) / 100;
+        var ux = ((hx % FIELD) + t * vx * sp + Math.sin(t * 1.3 + i) * 5) % FIELD, uy = ((hy % FIELD) + t * vy * sp) % FIELD;
+        if (ux < 0) ux += FIELD; if (uy < 0) uy += FIELD;
+        for (var ky = Math.floor((wy0 - uy) / FIELD); ky * FIELD + uy < wy0 + bh + 2; ky++)
+          for (var kx = Math.floor((wx0 - ux) / FIELD); kx * FIELD + ux < wx0 + bw + 2; kx++)
+            draw(i, Math.round(box + kx * FIELD + ux), Math.round(boy + ky * FIELD + uy));
+      }
+    }
     if (SEASON === 2) {
       g.fillStyle = 'rgba(255,255,255,0.85)';
-      for (var f = 0; f < 90; f++) {
-        var fx = ((f * 97 + t * (8 + f % 5) + Math.sin(t + f) * 6) % (bw + 20) + bw + 20) % (bw + 20) - 10;
-        var fy = ((f * 61 + t * (14 + f % 7)) % (bh + 20)) - 10;
-        g.fillRect(Math.round(fx), Math.round(fy), f % 9 === 0 ? 2 : 1, f % 9 === 0 ? 2 : 1);
-      }
+      field(55, 7, 4, 14, function (i, x, y) { var big = i % 9 === 0; g.fillRect(x, y, big ? 2 : 1, big ? 2 : 1); });
     } else if (SEASON === 1) {
       var lc = ['#d8862a', '#b85a1c', '#eab04a', '#8a3a14'];
-      for (var l = 0; l < 26; l++) {
-        g.fillStyle = lc[l % 4];
-        var lx = ((l * 131 + t * (10 + l % 6)) % (bw + 30)) - 15, ly = ((l * 79 + t * (7 + l % 4)) % (bh + 30)) - 15;
-        lx += Math.sin(t * 2 + l) * 4;
-        g.fillRect(Math.round(lx), Math.round(ly), 2, 1);
-        if (Math.sin(t * 6 + l) > 0) g.fillRect(Math.round(lx) + 1, Math.round(ly) + 1, 1, 1);
-      }
+      field(16, 8, 9, 7, function (i, x, y) {
+        g.fillStyle = lc[i % 4]; g.fillRect(x, y, 2, 1);
+        if (Math.sin(t * 6 + i) > 0) g.fillRect(x + 1, y + 1, 1, 1);
+      });
     } else if (o.month >= 3 && o.month <= 7) {
-      // butterflies over land
-      var bc = [[240, 220, 90], [240, 150, 190], [250, 250, 250], [160, 200, 250]];
-      for (var bf = 0; bf < 7; bf++) {
-        var bx = ((bf * 173 + Math.sin(t * 0.6 + bf) * 30 + t * 6) % bw + bw) % bw, by = ((bf * 97 + Math.cos(t * 0.5 + bf * 2) * 22) % bh + bh) % bh;
-        var wtx = Math.floor((bx - box) / PT), wty = Math.floor((by - boy) / PT), bt = L.tileAt(s, wtx, wty);
+      // butterflies, each fluttering round its own patch of grass
+      var bc = [[240, 220, 90], [240, 150, 190], [250, 250, 250], [160, 200, 250]], CELL = 64;
+      for (var cy2 = Math.floor(wy0 / CELL) - 1; cy2 * CELL < wy0 + bh + CELL; cy2++) for (var cx2 = Math.floor(wx0 / CELL) - 1; cx2 * CELL < wx0 + bw + CELL; cx2++) {
+        var hb = Sim.hash4(s.seed, cx2, cy2, 992);
+        if (hb % 100 >= 9) continue;
+        var homeX = cx2 * CELL + (hb >> 8) % CELL, homeY = cy2 * CELL + (hb >> 16) % CELL, bt = L.tileAt(s, Math.floor(homeX / PT), Math.floor(homeY / PT));
         if (bt !== T.GRASS && bt !== T.DGRASS) continue;
-        g.fillStyle = css(bc[bf % 4]);
-        var flap = Math.sin(t * 18 + bf) > 0;
+        var ph2 = (hb % 628) / 100, bx = box + homeX + Math.sin(t * 0.7 + ph2) * 22 + Math.sin(t * 1.9 + ph2 * 2) * 6, by = boy + homeY + Math.cos(t * 0.55 + ph2 * 1.7) * 14 + Math.sin(t * 2.3 + ph2) * 4;
+        if (bx < -4 || by < -4 || bx > bw + 4 || by > bh + 4) continue;
+        g.fillStyle = css(bc[hb % 4]);
+        var flap = Math.sin(t * 18 + ph2) > 0;
         g.fillRect(Math.round(bx) - (flap ? 1 : 0), Math.round(by), flap ? 3 : 1, 1);
         g.fillRect(Math.round(bx), Math.round(by) + 1, 1, 1);
       }
     }
-    // a flock of birds, now and then, with their shadows on the ground
-    var period = 16, ft = t % period;
+    // a flock of birds now and then, crossing the land on a fixed line, with their shadows on the ground
+    var period = 16, ft = t % period, seedB = Math.floor(t / period);
     if (ft < 7 && SEASON !== 2) {
-      var seedB = Math.floor(t / period), byy = 20 + (Sim.hash4(seedB, 1, 2, 3) % Math.max(1, bh - 60)), dir = seedB % 2 ? 1 : -1;
+      if (!flock || flock.seed !== seedB) flock = { seed: seedB, ox: wx0, oy: wy0 + 20 + (Sim.hash4(seedB, 1, 2, 3) % Math.max(1, bh - 60)), dir: seedB % 2 ? 1 : -1 };
       for (var bd = 0; bd < 5; bd++) {
         var off = [[0, 0], [-6, -3], [-6, 3], [-12, -6], [-12, 6]][bd];
-        var bxx = dir > 0 ? -20 + ft / 7 * (bw + 40) + off[0] : bw + 20 - ft / 7 * (bw + 40) - off[0], byb = byy + off[1] + Math.sin(t * 3 + bd) * 1.5;
+        var fwx = flock.dir > 0 ? flock.ox - 20 + ft / 7 * (bw + 40) + off[0] : flock.ox + bw + 20 - ft / 7 * (bw + 40) - off[0];
+        var bxx = box + fwx, byb = boy + flock.oy + off[1] + Math.sin(t * 3 + bd) * 1.5;
         g.fillStyle = 'rgba(10,10,20,0.18)'; g.fillRect(Math.round(bxx + 18), Math.round(byb + 30), 3, 1);
         g.fillStyle = '#2a2a34';
         var up = Math.sin(t * 12 + bd) > 0;
@@ -1003,9 +1198,9 @@
   }
 
   root.Pixel = {
-    PT: PT, PAD: PAD, PW: PW, R: R, renderProvince: renderProvince, clearCaches: clearCaches, beginFrame: beginFrame, setSeason: setSeason,
+    PT: PT, PAD: PAD, PW: PW, R: R, renderProvince: renderProvince, prefetch: prefetch, clearCaches: clearCaches, beginFrame: beginFrame, setSeason: setSeason,
     drawCharacter: drawCharacter, drawWeapon: drawWeapon, drawBeast: drawBeast, drawHorse: drawHorse, objectSprite: objectSprite, drawFire: drawFire,
-    drawPickup: drawPickup, drawProjectile: drawProjectile, drawEffect: drawEffect, ambient: ambient, shadow: shadow,
+    drawPickup: drawPickup, drawProjectile: drawProjectile, lifeBob: lifeBob, drawTool: drawTool, drawCarry: drawCarry, drawBubble: drawBubble, drawSite: drawSite, drawStake: drawStake, drawEffect: drawEffect, ambient: ambient, shadow: shadow,
     civRamp: civRamp, skinFor: skinFor, hairFor: hairFor, shadeOf: shadeOf, css: css, outline: outline, sprite: sprite, dirRow: dirRow, highways: highways
   };
 }(this));
